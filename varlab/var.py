@@ -69,7 +69,11 @@ def _empirical_var(
         )
 
     gamma = 1.0 - confidence
-    q = np.quantile(returns, gamma)
+    # NOTE: The formal definition of VaR requires finding the infimum of the
+    # set of losses where the cumulative distribution exceeds gamma.
+    # In practical terms: always choose the greater value when estimating the
+    # quantile =^.^=
+    q = np.quantile(returns, gamma, method="higher")
 
     return -q * np.sqrt(n_days)
 
