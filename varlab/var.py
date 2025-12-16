@@ -17,6 +17,16 @@ def var(
 
     Supports empirical and parametric methods with normal or t-Student
     distributions. Returns a positive VaR.
+
+    Notes
+    -----
+    The function is scale-agnostic with respect to the input returns:
+
+    - If `returns` represent PnL values, the VaR is expressed in monetary units
+    - If `returns` represent simple returns, the VaR is expressed in percentage
+    terms (assuming unit notional).
+
+  
     """
     returns_arr = np.asarray(returns, dtype=float)
 
@@ -150,7 +160,19 @@ def var_targeting(
 ) -> np.ndarray:
     """
     Rescale portfolio weights to match a target VaR.
+
+    Notes
+    -----
+    The economic interpretation of the output depends on the scale of the
+    inputs:
+
+    - If VaR is expressed in unit terms (VaR per unit notional), the output
+    represents rescaled portfolio weights.
+
+    - If VaR is expressed in monetary units, the output represents rescaled
+    position sizes.
     """
+
     if portfolio_var <= 0.0:
         raise ValueError("portfolio_var must be positive.")
 
