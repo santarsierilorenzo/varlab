@@ -11,6 +11,7 @@ def var(
     weights: Optional[Iterable[float]] = None,
     distribution: str = "normal",
     df: Optional[int] = None,
+    lamb: Optional[float] = None
 ) -> float:
     """
     Compute Value at Risk (VaR) for a return series or portfolio.
@@ -40,6 +41,7 @@ def var(
             returns_arr,
             n_days,
             confidence,
+            lamb
         )
 
     if method == "parametric":
@@ -59,17 +61,33 @@ def _empirical_var(
     returns: np.ndarray,
     n_days: int,
     confidence: float,
+    lamb: Optional[float] = None
 ) -> float:
     """
     Historical VaR using empirical quantiles with square-root-of-time scaling.
+
+    ---
+    Note on observation weighting:
+    This function implements the weighting formula proposed by John C. Hull in
+    the book "Options, Futures, and Other Derivatives". 
+
+    If a lambda parameter is provided, the function applies exponential
+    weighting  to the returns. The weights assigned to past observations
+    decline at a rate controlled by lambda: a higher lambda (closer to 1)
+    implies a slower decline, resulting in a "longer" memory of past volatility
     """
     if np.min(returns) >= 0.0:
         raise ValueError(
             "Historical VaR undefined: no negative returns."
         )
+    if lamb != None:
+        n = len(returns)
+        w = (lam**(np.arange(n, 1, -1)) * (1 - lam)) / (1 - lam**n)
+        returns = returns * w
 
     gamma = 1.0 - confidence
-    
+    lam = 0.90
+
     # NOTE: The formal definition of VaR requires finding the infimum of the
     # set of losses where the cumulative distribution exceeds gamma.
     # In practical terms: always choose the greater value when estimating the
