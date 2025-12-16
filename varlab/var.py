@@ -69,6 +69,7 @@ def _empirical_var(
         )
 
     gamma = 1.0 - confidence
+    
     # NOTE: The formal definition of VaR requires finding the infimum of the
     # set of losses where the cumulative distribution exceeds gamma.
     # In practical terms: always choose the greater value when estimating the
