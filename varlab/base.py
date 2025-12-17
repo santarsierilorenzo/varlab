@@ -2,7 +2,6 @@ from typing import Iterable, Optional
 from scipy.stats import norm, t
 import numpy as np
 
-
 ArrayLike = Iterable[float]
 
 
