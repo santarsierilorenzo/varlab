@@ -39,12 +39,10 @@ def var(
     if not 0.0 < confidence < 1.0:
         raise ValueError("confidence must be in (0, 1).")
 
-    gamma = confidence
-
     if method == "empirical":
         return _empirical_var(
             losses=losses,
-            gamma=gamma,
+            gamma=confidence,
             n_days=n_days,
             lamb=lamb,
         )
@@ -52,7 +50,7 @@ def var(
     if method == "parametric":
         return _parametric_var(
             losses=losses,
-            gamma=gamma,
+            gamma=confidence,
             n_days=n_days,
             weights=weights,
             distribution=distribution,
@@ -94,9 +92,9 @@ def _parametric_var(
     losses: np.ndarray,
     gamma: float,
     n_days: int,
-    weights: Optional[ArrayLike],
     distribution: str,
     df: Optional[int],
+    weights: Optional[ArrayLike] = None,
 ) -> float:
     """
     Parametric VaR assuming zero-mean i.i.d. returns.
