@@ -101,7 +101,9 @@ def weighted_sorted_dist(
 
     order: NDArray[np.int64] = np.argsort(returns)
 
-    sorted_returns = np.sort(returns)
+    order = np.argsort(returns)
+
+    sorted_returns = returns[order]
     sorted_weights = weights[order]
     cum_weights = np.cumsum(sorted_weights)
 

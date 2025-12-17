@@ -73,7 +73,7 @@ def _empirical_es(
             lamb,
         )
 
-        tail_mask = cum_w <= gamma
+        tail_mask = cum_w >= gamma
 
         if not np.any(tail_mask):
             raise RuntimeError("Empty ES tail.")
@@ -102,23 +102,58 @@ def _parametric_es(
         weights=weights,
     )
 
-    q = left_tail_quantile(
-        gamma=gamma,
-        distribution=distribution,
-        df=df,
-    )
-
     if distribution == "normal":
-        es_value = sigma * np.e**(-q**2 / 2) / (np.sqrt(2 * np.pi) * (1-gamma))
+        q = norm.ppf(gamma)
+        num = np.e**(-q**2 / 2)
+        den = (np.sqrt(2 * np.pi) * (1-gamma))
 
     elif distribution == "t":
         if df is None:
             raise ValueError("df must be provided for t distribution.")
+        q = t.ppf(gamma, df=df)
+
         num = t.pdf(q, df=df) * (df + q ** 2)
-        den = (df - 1) * gamma
-        es_value = sigma * num / den
+        den = (df - 1) * (1.0 - gamma)
+        
+    else:
+        raise ValueError(f"Unsupported distribution: {distribution}.")
+
+    es_value = sigma * num / den
+
+    return time_scaling(es_value, n_days)
+
+
+def _parametric_es(
+    losses: np.ndarray,
+    gamma: float,
+    n_days: int,
+    weights: Optional[ArrayLike],
+    distribution: str,
+    df: Optional[int],
+) -> float:
+    """
+    Parametric ES assuming zero-mean i.i.d. losses.
+    """
+    sigma = estimate_sigma(
+        returns=losses,
+        weights=weights,
+    )
+
+    if distribution == "normal":
+        q = norm.ppf(gamma)
+        es_value = sigma * norm.pdf(q) / (1.0 - gamma)
+
+    elif distribution == "t":
+        if df is None:
+            raise ValueError("df must be provided for t distribution.")
+        if df <= 1:
+            raise ValueError("df must be > 1 for ES.")
+
+        q = t.ppf(gamma, df=df)
+        
 
     else:
         raise ValueError(f"Unsupported distribution: {distribution}.")
 
     return time_scaling(es_value, n_days)
+
