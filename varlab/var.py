@@ -1,17 +1,24 @@
 from typing import Iterable, Optional
-from scipy.stats import norm, t
 import numpy as np
+from .base import (
+    estimate_sigma,
+    exponential_weights,
+    left_tail_quantile,
+    time_scaling
+)
+
+ArrayLike = Iterable[float]
 
 
 def var(
-    returns: Iterable[float],
+    returns: ArrayLike,
     n_days: int = 1,
     confidence: float = 0.99,
     method: str = "empirical",
-    weights: Optional[Iterable[float]] = None,
+    weights: Optional[ArrayLike] = None,
     distribution: str = "normal",
     df: Optional[int] = None,
-    lamb: Optional[float] = None
+    lamb: Optional[float] = None,
 ) -> float:
     """
     Compute Value at Risk (VaR) for a return series or portfolio.
@@ -26,177 +33,105 @@ def var(
     - If `returns` represent PnL values, the VaR is expressed in monetary units
     - If `returns` represent simple returns, the VaR is expressed in percentage
     terms (assuming unit notional).
-
-  
     """
     returns_arr = np.asarray(returns, dtype=float)
 
-    if returns_arr.ndim not in (1, 2):
-        raise ValueError("returns must be 1D or 2D.")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be in (0, 1).")
+
+    gamma = 1.0 - confidence
 
     if method == "empirical":
-        if returns_arr.ndim != 1:
-            raise ValueError("Empirical VaR requires 1D returns.")
         return _empirical_var(
-            returns_arr,
-            n_days,
-            confidence,
-            lamb
+            returns_arr=returns_arr,
+            gamma=gamma,
+            n_days=n_days,
+            lamb=lamb,
         )
 
     if method == "parametric":
         return _parametric_var(
-            returns_arr,
-            n_days,
-            confidence,
-            weights,
-            distribution,
-            df,
+            returns_arr=returns_arr,
+            gamma=gamma,
+            n_days=n_days,
+            weights=weights,
+            distribution=distribution,
+            df=df,
         )
 
     raise ValueError(f"Unsupported VaR method: {method}.")
 
 
 def _empirical_var(
-    returns: np.ndarray,
+    returns_arr: np.ndarray,
+    gamma: float,
     n_days: int,
-    confidence: float,
-    lamb: Optional[float] = None
+    lamb: Optional[float],
 ) -> float:
     """
-    Historical VaR using empirical quantiles with square-root-of-time scaling.
-
-    ---
-    Note on observation weighting:
-    This function implements the weighting formula proposed by John C. Hull in
-    the book "Options, Futures, and Other Derivatives". 
-
-    If a lambda parameter is provided, the function applies exponential
-    weighting  to the returns. The weights assigned to past observations
-    decline at a rate controlled by lambda: a higher lambda (closer to 1)
-    implies a slower decline, resulting in a "longer" memory of past volatility
+    Historical VaR using empirical quantiles.
     """
-    if np.min(returns) >= 0.0:
-        raise ValueError(
-            "Historical VaR undefined: no negative returns."
+    if returns_arr.ndim != 1:
+        raise ValueError("Empirical VaR requires 1D returns.")
+
+    if np.min(returns_arr) >= 0.0:
+        raise ValueError("Historical VaR undefined: no negative returns.")
+
+    if lamb is None:
+        # NOTE: The formal definition of VaR requires finding the infimum of
+        # the set of losses where the cumulative distribution exceeds gamma.
+        # In practical terms: always choose the greater value when estimating
+        # the quantile =^.^=
+        q = np.quantile(returns_arr, gamma, method="higher")
+    else:
+        weights = exponential_weights(
+            n_obs=returns_arr.size,
+            lamb=lamb,
         )
-    if lamb != None:
-        n = len(returns)
-        w = (lam**(np.arange(n, 1, -1)) * (1 - lam)) / (1 - lam**n)
-        returns = returns * w
+        q = _weighted_quantile(
+            values=returns_arr,
+            weights=weights,
+            gamma=gamma,
+        )
 
-    gamma = 1.0 - confidence
-    lam = 0.90
-
-    # NOTE: The formal definition of VaR requires finding the infimum of the
-    # set of losses where the cumulative distribution exceeds gamma.
-    # In practical terms: always choose the greater value when estimating the
-    # quantile =^.^=
-    q = np.quantile(returns, gamma, method="higher")
-
-    return -q * np.sqrt(n_days)
+    var_value = -q
+    return time_scaling(var_value, n_days)
 
 
 def _parametric_var(
-    returns: np.ndarray,
-    n_days: int,
-    confidence: float,
-    weights: Optional[Iterable[float]],
-    distribution: str,
-    df: Optional[int],
-) -> float:
-    """
-    Parametric VaR assuming i.i.d. returns and zero mean.
-    """
-    sigma = _estimate_sigma(returns, weights)
-
-    gamma = 1.0 - confidence
-    q = _quantile(gamma, distribution, df)
-
-    return -q * sigma * np.sqrt(n_days)
-
-
-def _estimate_sigma(
-    returns: np.ndarray,
-    weights: Optional[Iterable[float]],
-) -> float:
-    """
-    Estimate volatility for single assets or portfolios.
-    """
-    if returns.ndim == 1:
-        if returns.size < 2:
-            raise ValueError("Insufficient sample size.")
-        sigma = returns.std(ddof=1)
-    else:
-        if weights is None:
-            raise ValueError("Weights required for portfolio VaR.")
-        weights_arr = np.asarray(weights, dtype=float)
-        sigma = _portfolio_volatility(returns, weights_arr)
-
-    if sigma <= 0.0:
-        raise ValueError("Zero or negative volatility.")
-
-    return sigma
-
-
-def _quantile(
+    returns_arr: np.ndarray,
     gamma: float,
+    n_days: int,
+    weights: Optional[ArrayLike],
     distribution: str,
     df: Optional[int],
 ) -> float:
     """
-    Return left-tail quantile for the selected distribution.
+    Parametric VaR assuming zero-mean i.i.d. returns.
     """
-    if distribution == "normal":
-        return norm.ppf(gamma)
+    sigma = estimate_sigma(
+        returns=returns_arr,
+        weights=weights,
+    )
 
-    if distribution == "tstudent":
-        if df is None:
-            raise ValueError("df must be provided for t-student.")
-        if df <= 2:
-            raise ValueError("df must be > 2.")
-        return t.ppf(gamma, df=df)
+    q = left_tail_quantile(
+        gamma=gamma,
+        distribution=distribution,
+        df=df,
+    )
 
-    raise ValueError(f"Unsupported distribution: {distribution}.")
+    var_value = -q * sigma
+    return time_scaling(var_value, n_days)
 
 
-def _portfolio_volatility(
-    returns: np.ndarray,
+def _weighted_quantile(
+    values: np.ndarray,
     weights: np.ndarray,
+    gamma: float,
 ) -> float:
     """
-    Compute portfolio volatility using the variance–covariance matrix.
+    Compute weighted empirical quantile.
     """
-    if returns.shape[1] != weights.shape[0]:
-        raise ValueError("Weights dimension mismatch.")
-
-    cov = np.cov(returns, rowvar=False)
-    var = weights.T @ cov @ weights
-
-    return var ** 0.5
-
-
-def var_targeting(
-    target_var: float,
-    portfolio_var: float,
-    weights: Iterable[float],
-) -> np.ndarray:
-    """
-    Rescale portfolio weights to match a target VaR.
-
-    Notes
-    -----
-    The economic interpretation of the output depends on the scale of the
-    inputs:
-
-    - If VaR is expressed in unit terms (VaR per unit notional), the output
-    represents rescaled portfolio weights.
-
-    - If VaR is expressed in monetary units, the output represents rescaled
-    position sizes.
-    """
-
-    if portfolio_var <= 0.0:
-        raise ValueError("portfolio_var must be positive.")
-
-    return np.asarray(weights, dtype=float) * target_var / portfolio_var
+    order = np.argsort(values)
+    cum_weights = np.cumsum(weights[order])
+    return float(values[order][np.searchsorted(cum_weights, gamma)])
