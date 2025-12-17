@@ -2,9 +2,9 @@ from typing import Iterable, Optional
 import numpy as np
 from .base import (
     estimate_sigma,
-    exponential_weights,
+    weighted_sorted_dist,
     left_tail_quantile,
-    time_scaling
+    time_scaling,
 )
 
 ArrayLike = Iterable[float]
@@ -69,13 +69,10 @@ def _empirical_var(
     lamb: Optional[float],
 ) -> float:
     """
-    Historical VaR using empirical quantiles.
+    Empirical (historical) VaR.
     """
     if returns_arr.ndim != 1:
         raise ValueError("Empirical VaR requires 1D returns.")
-
-    if np.min(returns_arr) >= 0.0:
-        raise ValueError("Historical VaR undefined: no negative returns.")
 
     if lamb is None:
         # NOTE: The formal definition of VaR requires finding the infimum of
@@ -83,18 +80,13 @@ def _empirical_var(
         # In practical terms: always choose the greater value when estimating
         # the quantile =^.^=
         q = np.quantile(returns_arr, gamma, method="higher")
-    else:
-        weights = exponential_weights(
-            n_obs=returns_arr.size,
-            lamb=lamb,
-        )
-        q = _weighted_quantile(
-            values=returns_arr,
-            weights=weights,
-            gamma=gamma,
-        )
+        var_value = -q
 
-    var_value = -q
+    else:
+        sorted_pnl, _, cum_w = weighted_sorted_dist(returns_arr, lamb)
+        idx = int(np.searchsorted(cum_w, gamma, side="left"))
+        var_value = -float(sorted_pnl[idx])
+
     return time_scaling(var_value, n_days)
 
 
@@ -122,16 +114,3 @@ def _parametric_var(
 
     var_value = -q * sigma
     return time_scaling(var_value, n_days)
-
-
-def _weighted_quantile(
-    values: np.ndarray,
-    weights: np.ndarray,
-    gamma: float,
-) -> float:
-    """
-    Compute weighted empirical quantile.
-    """
-    order = np.argsort(values)
-    cum_weights = np.cumsum(weights[order])
-    return float(values[order][np.searchsorted(cum_weights, gamma)])

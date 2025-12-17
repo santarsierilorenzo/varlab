@@ -1,4 +1,5 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
+from numpy.typing import NDArray
 from scipy.stats import norm, t
 import numpy as np
 
@@ -20,10 +21,10 @@ def estimate_sigma(
     elif returns.ndim == 2:
         if weights is None:
             raise ValueError("Weights required for portfolio volatility.")
-        
+
         weights_arr = np.asarray(weights, dtype=float)
         sigma = _portfolio_volatility(returns, weights_arr)
-        
+
     else:
         raise ValueError("Returns must be 1D or 2D.")
 
@@ -69,25 +70,42 @@ def time_scaling(
     return value * np.sqrt(n_days)
 
 
-def exponential_weights(
-    n_obs: int,
+def weighted_sorted_dist(
+    pnl: NDArray[np.floating],
     lamb: float,
-) -> np.ndarray:
+) -> Tuple[
+    NDArray[np.floating],
+    NDArray[np.floating],
+    NDArray[np.floating],
+]:
     """
-    This function implements the weighting formula proposed by John C. Hull in
-    the book "Options, Futures, and Other Derivatives". 
+    Build a weighted, sorted PnL distribution using
+    Hull-style exponential decay.
+    """
+    if pnl.ndim != 1:
+        raise ValueError("pnl must be a 1D array.")
 
-    The function applies exponential weighting to the returns. The weights
-    assigned to past observations decline at a rate controlled by lambda: a
-    higher lambda (closer to 1) implies a slower decline, resulting in a
-    "longer" memory of past volatility
-    """
+    if pnl.size < 2:
+        raise ValueError("pnl must contain at least two observations.")
+
     if not 0.0 < lamb < 1.0:
         raise ValueError("lamb must be in (0, 1).")
 
-    powers = np.arange(n_obs - 1, -1, -1)
-    weights = (1.0 - lamb) * lamb ** powers
-    return weights / weights.sum()
+    n: int = pnl.shape[0]
+
+    weights: NDArray[np.floating] = (
+        lamb ** (n - np.arange(1, n + 1))
+        * (1.0 - lamb)
+        / (1.0 - lamb ** n)
+    )
+
+    order: NDArray[np.int64] = np.argsort(pnl)
+
+    sorted_pnl = pnl[order]
+    sorted_weights = weights[order]
+    cum_weights = np.cumsum(sorted_weights)
+
+    return sorted_pnl, sorted_weights, cum_weights
 
 
 def _portfolio_volatility(
