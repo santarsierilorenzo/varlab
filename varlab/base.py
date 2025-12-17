@@ -71,7 +71,7 @@ def time_scaling(
 
 
 def weighted_sorted_dist(
-    pnl: NDArray[np.floating],
+    returns: NDArray[np.floating],
     lamb: float,
 ) -> Tuple[
     NDArray[np.floating],
@@ -79,19 +79,19 @@ def weighted_sorted_dist(
     NDArray[np.floating],
 ]:
     """
-    Build a weighted, sorted PnL distribution using
+    Build a weighted, sorted returns distribution using
     Hull-style exponential decay.
     """
-    if pnl.ndim != 1:
-        raise ValueError("pnl must be a 1D array.")
+    if returns.ndim != 1:
+        raise ValueError("returns must be a 1D array.")
 
-    if pnl.size < 2:
-        raise ValueError("pnl must contain at least two observations.")
+    if returns.size < 2:
+        raise ValueError("returns must contain at least two observations.")
 
     if not 0.0 < lamb < 1.0:
         raise ValueError("lamb must be in (0, 1).")
 
-    n: int = pnl.shape[0]
+    n: int = returns.shape[0]
 
     weights: NDArray[np.floating] = (
         lamb ** (n - np.arange(1, n + 1))
@@ -99,13 +99,13 @@ def weighted_sorted_dist(
         / (1.0 - lamb ** n)
     )
 
-    order: NDArray[np.int64] = np.argsort(pnl)
+    order: NDArray[np.int64] = np.argsort(returns)
 
-    sorted_pnl = pnl[order]
+    sorted_returns = np.sort(returns)
     sorted_weights = weights[order]
     cum_weights = np.cumsum(sorted_weights)
 
-    return sorted_pnl, sorted_weights, cum_weights
+    return sorted_returns, sorted_weights, cum_weights
 
 
 def _portfolio_volatility(

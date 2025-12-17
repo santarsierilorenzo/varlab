@@ -24,25 +24,23 @@ def es(
     """
     Compute Expected Shortfall (ES).
     """
-    returns_arr = np.asarray(returns, dtype=float)
+    losses = -np.asarray(returns, dtype=float)
 
     if not 0.0 < confidence < 1.0:
         raise ValueError("confidence must be in (0, 1).")
 
-    gamma = 1.0 - confidence
-
     if method == "empirical":
         return _empirical_es(
-            returns_arr=returns_arr,
-            gamma=gamma,
+            losses=losses,
+            gamma=confidence,
             n_days=n_days,
             lamb=lamb,
         )
 
     if method == "parametric":
         return _parametric_es(
-            returns_arr=returns_arr,
-            gamma=gamma,
+            losses=losses,
+            gamma=confidence,
             n_days=n_days,
             weights=weights,
             distribution=distribution,
@@ -53,7 +51,7 @@ def es(
 
 
 def _empirical_es(
-    returns_arr: np.ndarray,
+    losses: np.ndarray,
     gamma: float,
     n_days: int,
     lamb: Optional[float],
@@ -61,17 +59,17 @@ def _empirical_es(
     """
     Empirical (historical) Expected Shortfall.
     """
-    if returns_arr.ndim != 1:
+    if losses.ndim != 1:
         raise ValueError("Empirical ES requires 1D returns.")
 
     if lamb is None:
-        q = np.quantile(returns_arr, gamma, method="higher")
-        tail = returns_arr[returns_arr <= q]
-        es_value = -float(tail.mean())
+        q = np.quantile(losses, gamma, method="higher")
+        tail = losses[losses >= q]
+        es_value = float(tail.mean())
 
     else:
         sorted_pnl, sorted_w, cum_w = weighted_sorted_dist(
-            returns_arr,
+            losses,
             lamb,
         )
 
@@ -80,7 +78,7 @@ def _empirical_es(
         if not np.any(tail_mask):
             raise RuntimeError("Empty ES tail.")
 
-        es_value = -float(
+        es_value = float(
             np.sum(sorted_pnl[tail_mask] * sorted_w[tail_mask])
             / np.sum(sorted_w[tail_mask])
         )
@@ -89,7 +87,7 @@ def _empirical_es(
 
 
 def _parametric_es(
-    returns_arr: np.ndarray,
+    losses: np.ndarray,
     gamma: float,
     n_days: int,
     weights: Optional[ArrayLike],
@@ -100,7 +98,7 @@ def _parametric_es(
     Parametric ES assuming zero-mean i.i.d. returns.
     """
     sigma = estimate_sigma(
-        returns=returns_arr,
+        returns=losses,
         weights=weights,
     )
 
@@ -111,7 +109,7 @@ def _parametric_es(
     )
 
     if distribution == "normal":
-        es_value = sigma * norm.pdf(q) / gamma
+        es_value = sigma * np.e**(-q**2 / 2) / (np.sqrt(2 * np.pi) * (1-gamma))
 
     elif distribution == "t":
         if df is None:

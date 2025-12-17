@@ -34,16 +34,16 @@ def var(
     - If `returns` represent simple returns, the VaR is expressed in percentage
     terms (assuming unit notional).
     """
-    returns_arr = np.asarray(returns, dtype=float)
+    losses = -np.asarray(returns, dtype=float)
 
     if not 0.0 < confidence < 1.0:
         raise ValueError("confidence must be in (0, 1).")
 
-    gamma = 1.0 - confidence
+    gamma = confidence
 
     if method == "empirical":
         return _empirical_var(
-            returns_arr=returns_arr,
+            losses=losses,
             gamma=gamma,
             n_days=n_days,
             lamb=lamb,
@@ -51,7 +51,7 @@ def var(
 
     if method == "parametric":
         return _parametric_var(
-            returns_arr=returns_arr,
+            losses=losses,
             gamma=gamma,
             n_days=n_days,
             weights=weights,
@@ -63,7 +63,7 @@ def var(
 
 
 def _empirical_var(
-    returns_arr: np.ndarray,
+    losses: np.ndarray,
     gamma: float,
     n_days: int,
     lamb: Optional[float],
@@ -71,7 +71,7 @@ def _empirical_var(
     """
     Empirical (historical) VaR.
     """
-    if returns_arr.ndim != 1:
+    if losses.ndim != 1:
         raise ValueError("Empirical VaR requires 1D returns.")
 
     if lamb is None:
@@ -79,19 +79,19 @@ def _empirical_var(
         # the set of losses where the cumulative distribution exceeds gamma.
         # In practical terms: always choose the greater value when estimating
         # the quantile =^.^=
-        q = np.quantile(returns_arr, gamma, method="higher")
-        var_value = -q
+        q = np.quantile(losses, gamma, method="higher")
+        var_value = q
 
     else:
-        sorted_pnl, _, cum_w = weighted_sorted_dist(returns_arr, lamb)
-        idx = int(np.searchsorted(cum_w, gamma, side="left"))
-        var_value = -float(sorted_pnl[idx])
+        sorted_pnl, _, cum_w = weighted_sorted_dist(losses, lamb)
+        idx = int(np.searchsorted(cum_w, gamma, side="right"))
+        var_value = float(sorted_pnl[idx])
 
     return time_scaling(var_value, n_days)
 
 
 def _parametric_var(
-    returns_arr: np.ndarray,
+    losses: np.ndarray,
     gamma: float,
     n_days: int,
     weights: Optional[ArrayLike],
@@ -102,7 +102,7 @@ def _parametric_var(
     Parametric VaR assuming zero-mean i.i.d. returns.
     """
     sigma = estimate_sigma(
-        returns=returns_arr,
+        returns=losses,
         weights=weights,
     )
 
@@ -112,5 +112,5 @@ def _parametric_var(
         df=df,
     )
 
-    var_value = -q * sigma
+    var_value = q * sigma
     return time_scaling(var_value, n_days)
