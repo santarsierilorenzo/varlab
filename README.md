@@ -10,7 +10,7 @@
 
 <p align="center">
   <i>
-    A minimal, production-oriented library for Value at Risk, Expected
+    A minimal Python package for Value at Risk, Expected
     Shortfall, and risk-based position scaling.
   </i>
 </p>
