@@ -1,5 +1,5 @@
-from typing import Sequence, Tuple
 from scipy.stats import binom, chi2
+from typing import Sequence, Tuple
 import numpy as np
 
 
