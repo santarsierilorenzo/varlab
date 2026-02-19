@@ -1,235 +1,255 @@
+"""
+Unconditional coverage tests for VaR backtesting.
+
+This module implements statistically rigorous tests used in Value-at-Risk
+(VaR) model validation
+"""
+
+from __future__ import annotations
+
+from typing import Optional, Sequence, Dict, Any
 from scipy.stats import binom, chi2
-from typing import Sequence, Tuple
+from dataclasses import dataclass
 import numpy as np
 
 
-def standard_coverage_test(
-    exceedances: Sequence[bool],
-    confidence_level: float,
-    significance_level: float = 0.05,
-) -> Tuple[bool, Tuple[int, int, int]]:
+@dataclass(frozen=True)
+class CoverageTestResult:
     """
-    Perform the exact binomial coverage test for VaR backtesting.
+    Standardized result container for coverage tests.
 
-    Statistical framework
-    ---------------------
-    This function evaluates the unconditional coverage of a VaR model
-    using the exact binomial test.
-
-    Let I_t be the indicator of a VaR violation:
-
-        I_t = 1 if loss_t > VaR_{1-q}
-              0 otherwise
-
-    Under the null hypothesis
-
-        H0 : q* = q
-
-    where q = 1 - confidence_level, the total number of exceedances
-
-        X = sum_{t=1}^T I_t
-
-    follows a Binomial(T, q) distribution.
-
-    The acceptance region is constructed using binomial quantiles,
-    allocating half of the significance level to each tail.
-
-    Assumptions
-    -----------
-    - Exceedances are IID Bernoulli under H0.
-    - The VaR model is fixed and not estimated within the test.
-    - This is an unconditional coverage test.
-
-    Returns
-    -------
-    Tuple[bool, Tuple[int, int, int]]
-        reject : bool
-            True if H0 is rejected.
-        (lower_bound, upper_bound, observed_violations)
-            Acceptance bounds and observed violation count.
+    Attributes
+    ----------
+    test_name : str
+        Name of the statistical test.
+    statistic : Optional[float]
+        Test statistic value (if applicable).
+    p_value : Optional[float]
+        P-value under the null hypothesis.
+    reject : Optional[bool]
+        True if H0 rejected at chosen alpha.
+    info : Dict[str, Any]
+        Additional diagnostic information.
     """
-    sample_size: int = len(exceedances)
-    violation_probability: float = 1.0 - confidence_level
-    observed_violations: int = int(np.sum(exceedances))
-
-    alpha_half: float = significance_level / 2.0
-
-    lower_bound: int = int(
-        binom.ppf(alpha_half, sample_size, violation_probability)
-    )
-
-    upper_bound: int = int(
-        binom.ppf(
-            1.0 - alpha_half,
-            sample_size,
-            violation_probability,
-        )
-    )
-
-    reject: bool = (
-        observed_violations < lower_bound
-        or observed_violations > upper_bound
-    )
-
-    return reject, (lower_bound, upper_bound, observed_violations)
+    test_name: str
+    statistic: Optional[float]
+    p_value: Optional[float]
+    reject: Optional[bool]
+    info: Dict[str, Any]
 
 
-def kupiec_pf(
+def _validate_exceedances(
     exceedances: Sequence[int],
-    confidence_level: float,
-) -> Tuple[float, float]:
+) -> np.ndarray:
     """
-    Perform the Kupiec Proportion of Failures (PF) coverage test for VaR
-    backtesting.
-
-    Statistical framework
-    ---------------------
-    This function evaluates the unconditional coverage of a VaR model
-    using a likelihood ratio (LR) test, as proposed by Kupiec (1995).
-
-    Let I_t be the indicator of a VaR violation:
-
-        I_t = 1 if loss_t > VaR_{1-q}
-            0 otherwise
-
-    Under the null hypothesis
-
-        H0 : q* = q
-
-    where q = 1 - confidence_level denotes the theoretical probability of
-    exceedance implied by the VaR model, the total number of exceedances
-
-        X = sum_{t=1}^T I_t
-
-    follows a Binomial(T, q) distribution.
-
-    The test is based on the likelihood ratio statistic
-
-        LR_POF = -2 log [ L(q) / L(q_hat) ]
-
-    where q_hat = X / T is the maximum likelihood estimator of q.
-
-    Under the null hypothesis, the test statistic is asymptotically
-    distributed as
-
-        LR_POF ~ chi-square(1).
-
-    The null hypothesis is rejected if the statistic lies in the right tail
-    of the chi-square distribution at the chosen significance level.
-
-    Assumptions
-    -----------
-    - Exceedances are IID Bernoulli under H0.
-    - The VaR model is fixed and not estimated within the test.
-    - This is an unconditional coverage test.
+    Validate and convert exceedances to numpy array.
 
     Returns
     -------
-    Tuple[float, float]
-        lr_stat : float
-            Likelihood ratio test statistic.
-        p_value : float
-            Right-tail p-value under the chi-square(1) distribution.
+    np.ndarray
+        Binary array of shape (T,).
     """
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be in (0, 1).")
-
     if len(exceedances) == 0:
         raise ValueError("exceedances cannot be empty.")
 
-    exceedances_arr = np.asarray(exceedances, dtype=int)
+    arr = np.asarray(exceedances, dtype=int)
 
-    if not set(np.unique(exceedances_arr)).issubset({0, 1}):
+    unique_vals = np.unique(arr)
+    if not set(unique_vals).issubset({0, 1}):
         raise ValueError("exceedances must be binary (0/1).")
 
-    t: int = len(exceedances_arr)
-    x: int = int(np.sum(exceedances_arr))
-
-    q: float = 1.0 - confidence_level
-    q_hat: float = x / t
-
-    if q_hat == 0.0 or q_hat == 1.0:
-        raise ValueError(
-            "Kupiec test undefined when all observations "
-            "are violations or none."
-        )
-
-    log_num = (
-        (t - x) * np.log(1.0 - q) +
-        x * np.log(q)
-    )
-
-    log_den = (
-        (t - x) * np.log(1.0 - q_hat) +
-        x * np.log(q_hat)
-    )
-
-    lr_stat: float = -2.0 * (log_num - log_den)
-    p_value: float = 1.0 - chi2.cdf(lr_stat, df=1)
-
-    return lr_stat, p_value
+    return arr
 
 
-def traffic_light(
+def _validate_probability(value: float, name: str) -> None:
+    """Validate probability in (0, 1)."""
+    if not 0.0 < value < 1.0:
+        raise ValueError(f"{name} must be in (0, 1).")
+
+
+def exact_binomial_coverage_test(
     exceedances: Sequence[int],
-) -> Tuple[str, float, int]:
+    confidence_level: float,
+    alpha: Optional[float] = None,
+) -> CoverageTestResult:
     """
-    Perform the Basel Traffic Light test for a 99% one-day VaR model.
+    Exact two-sided binomial coverage test.
 
-    The test classifies the VaR model into green, yellow, or red zone
-    based on the number of daily exceedances observed over the most
-    recent 250 trading days.
+    Tests the null hypothesis:
 
-    Regulatory framework
-    --------------------
-    - VaR confidence level: 99%
-    - Backtesting window: 250 trading days
-    - Test applied to one-day VaR exceedances
+        H0 : q* = q
 
-    Zone classification
-    -------------------
-    Green  : 0-4 exceedances -> multiplier = 3.0
-    Yellow : 5-9 exceedances -> multiplier in [3.4, 3.85]
-    Red    : 10 or more -> multiplier = 4.0
+    where q = 1 - confidence_level.
 
-    Regulatory capital
-    ------------------
-    The Traffic Light classification determines the Basel capital
-    multiplier. The market risk capital requirement is computed as:
-
-        capital = multiplier * sqrt(10) * VaR_1d
-
-    where VaR_1d is the one-day 99% VaR. The square-root-of-time
-    scaling converts the one-day VaR into a 10-day VaR.
+    The total number of exceedances follows Binomial(T, q)
+    under H0.
 
     Parameters
     ----------
     exceedances : Sequence[int]
-        Binary sequence where 1 indicates a VaR violation.
+        Binary exceedance indicators.
+    confidence_level : float
+        VaR confidence level.
+    alpha : Optional[float]
+        Significance level. If provided, reject decision returned.
 
     Returns
     -------
-    Tuple[str, float, int]
-        zone : str
-            "green", "yellow", or "red".
-        multiplier : float
-            Basel capital multiplier.
-        violations : int
-            Number of exceedances in the last 250 observations.
+    CoverageTestResult
     """
-    window: int = 250
+    arr = _validate_exceedances(exceedances)
+    _validate_probability(confidence_level, "confidence_level")
 
-    if len(exceedances) < window:
-        raise ValueError(
-            "Traffic Light test requires at least 250 observations."
+    if alpha is not None:
+        _validate_probability(alpha, "alpha")
+
+    t: int = len(arr)
+    x: int = int(np.sum(arr))
+    q: float = 1.0 - confidence_level
+
+    p_value: float = 2.0 * min(
+        binom.cdf(x, t, q),
+        1.0 - binom.cdf(x - 1, t, q)
+    )
+    p_value = min(p_value, 1.0)
+
+    reject: Optional[bool] = None
+    if alpha is not None:
+        reject = p_value < alpha
+
+    return CoverageTestResult(
+        test_name="Exact Binomial Coverage",
+        statistic=float(x),
+        p_value=float(p_value),
+        reject=reject,
+        info={
+            "sample_size": t,
+            "observed_violations": x,
+            "expected_violations": t * q,
+            "theoretical_probability": q,
+        },
+    )
+
+
+def kupiec_pof_test(
+    exceedances: Sequence[int],
+    confidence_level: float,
+    alpha: Optional[float] = None,
+) -> CoverageTestResult:
+    """
+    Kupiec (1995) likelihood ratio coverage test.
+
+    LR_POF = -2 log [ L(q) / L(q_hat) ]
+
+    Under H0:
+
+        LR_POF ~ chi-square(1)
+
+    Parameters
+    ----------
+    exceedances : Sequence[int]
+        Binary exceedance indicators.
+    confidence_level : float
+        VaR confidence level.
+    alpha : Optional[float]
+        Significance level.
+
+    Returns
+    -------
+    CoverageTestResult
+    """
+    arr = _validate_exceedances(exceedances)
+    _validate_probability(confidence_level, "confidence_level")
+
+    if alpha is not None:
+        _validate_probability(alpha, "alpha")
+
+    t: int = len(arr)
+    x: int = int(np.sum(arr))
+
+    q: float = 1.0 - confidence_level
+    q_hat: float = x / t
+
+    # Handle edge cases explicitly (no crashes)
+    if x == 0:
+        log_num = t * np.log(1.0 - q)
+        log_den = 0.0
+    elif x == t:
+        log_num = t * np.log(q)
+        log_den = 0.0
+    else:
+        log_num = (
+            (t - x) * np.log(1.0 - q) +
+            x * np.log(q)
+        )
+        log_den = (
+            (t - x) * np.log(1.0 - q_hat) +
+            x * np.log(q_hat)
         )
 
-    exceedances_arr = np.asarray(exceedances, dtype=int)
+    lr_stat: float = -2.0 * (log_num - log_den)
+    p_value: float = 1.0 - chi2.cdf(lr_stat, df=1)
 
-    if not set(np.unique(exceedances_arr)).issubset({0, 1}):
-        raise ValueError("exceedances must be binary (0/1).")
+    reject: Optional[bool] = None
+    if alpha is not None:
+        reject = p_value < alpha
 
-    last_window = exceedances_arr[-window:]
+    return CoverageTestResult(
+        test_name="Kupiec POF",
+        statistic=float(lr_stat),
+        p_value=float(p_value),
+        reject=reject,
+        info={
+            "sample_size": t,
+            "observed_violations": x,
+            "expected_violations": t * q,
+            "theoretical_probability": q,
+            "estimated_probability": q_hat,
+        },
+    )
+
+
+def basel_traffic_light_test(
+    exceedances: Sequence[int],
+    confidence_level: float,
+) -> CoverageTestResult:
+    """
+    Basel Traffic Light classification for one-day 99% VaR.
+
+    This is a regulatory rule defined by Basel II/III and is valid
+    exclusively for:
+        - 1-day horizon
+        - 99% confidence level
+        - 250-observation backtesting window
+
+    The function is intentionally non-parametric to prevent misuse.
+
+    Parameters
+    ----------
+    exceedances : Sequence[int]
+        Binary exceedance indicators (1 if loss > VaR, else 0).
+    confidence_level : float
+        VaR confidence level. Must be exactly 0.99.
+
+    Returns
+    -------
+    CoverageTestResult
+    """
+    if confidence_level != 0.99:
+        raise ValueError(
+            "Basel Traffic Light is defined only for 99% VaR."
+        )
+
+    arr = _validate_exceedances(exceedances)
+
+    window: int = 250
+    if len(arr) < window:
+        raise ValueError(
+            "At least 250 observations are required for "
+            "Basel Traffic Light test."
+        )
+
+    last_window = arr[-window:]
     violations: int = int(np.sum(last_window))
 
     yellow_multiplier_map = {
@@ -241,9 +261,25 @@ def traffic_light(
     }
 
     if violations <= 4:
-        return "green", 3.0, violations
+        zone = "green"
+        multiplier = 3.0
+    elif violations <= 9:
+        zone = "yellow"
+        multiplier = yellow_multiplier_map[violations]
+    else:
+        zone = "red"
+        multiplier = 4.0
 
-    if violations <= 9:
-        return "yellow", yellow_multiplier_map[violations], violations
-
-    return "red", 4.0, violations
+    return CoverageTestResult(
+        test_name="Basel Traffic Light",
+        statistic=float(violations),
+        p_value=None,
+        reject=None,
+        info={
+            "window": window,
+            "confidence_level": confidence_level,
+            "violations": violations,
+            "zone": zone,
+            "multiplier": multiplier,
+        },
+    )
