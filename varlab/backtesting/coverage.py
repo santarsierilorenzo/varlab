@@ -168,3 +168,82 @@ def kupiec_pf(
     p_value: float = 1.0 - chi2.cdf(lr_stat, df=1)
 
     return lr_stat, p_value
+
+
+def traffic_light(
+    exceedances: Sequence[int],
+) -> Tuple[str, float, int]:
+    """
+    Perform the Basel Traffic Light test for a 99% one-day VaR model.
+
+    The test classifies the VaR model into green, yellow, or red zone
+    based on the number of daily exceedances observed over the most
+    recent 250 trading days.
+
+    Regulatory framework
+    --------------------
+    - VaR confidence level: 99%
+    - Backtesting window: 250 trading days
+    - Test applied to one-day VaR exceedances
+
+    Zone classification
+    -------------------
+    Green  : 0-4 exceedances -> multiplier = 3.0
+    Yellow : 5-9 exceedances -> multiplier in [3.4, 3.85]
+    Red    : 10 or more -> multiplier = 4.0
+
+    Regulatory capital
+    ------------------
+    The Traffic Light classification determines the Basel capital
+    multiplier. The market risk capital requirement is computed as:
+
+        capital = multiplier * sqrt(10) * VaR_1d
+
+    where VaR_1d is the one-day 99% VaR. The square-root-of-time
+    scaling converts the one-day VaR into a 10-day VaR.
+
+    Parameters
+    ----------
+    exceedances : Sequence[int]
+        Binary sequence where 1 indicates a VaR violation.
+
+    Returns
+    -------
+    Tuple[str, float, int]
+        zone : str
+            "green", "yellow", or "red".
+        multiplier : float
+            Basel capital multiplier.
+        violations : int
+            Number of exceedances in the last 250 observations.
+    """
+    window: int = 250
+
+    if len(exceedances) < window:
+        raise ValueError(
+            "Traffic Light test requires at least 250 observations."
+        )
+
+    exceedances_arr = np.asarray(exceedances, dtype=int)
+
+    if not set(np.unique(exceedances_arr)).issubset({0, 1}):
+        raise ValueError("exceedances must be binary (0/1).")
+
+    last_window = exceedances_arr[-window:]
+    violations: int = int(np.sum(last_window))
+
+    yellow_multiplier_map = {
+        5: 3.4,
+        6: 3.5,
+        7: 3.65,
+        8: 3.75,
+        9: 3.85,
+    }
+
+    if violations <= 4:
+        return "green", 3.0, violations
+
+    if violations <= 9:
+        return "yellow", yellow_multiplier_map[violations], violations
+
+    return "red", 4.0, violations
