@@ -1,3 +1,10 @@
+"""
+Distribution tests for VaR backtesting.
+
+This module implements statistically rigorous tests used in Value-at-Risk
+(VaR) model validation
+"""
+
 from __future__ import annotations
 
 from typing import Iterable, Optional, Literal, Dict, Any, Union
@@ -203,7 +210,7 @@ def _rolling_pit(
 
         return pit
 
-    # discrete case
+    # Discrete case
     u = [np.nan] * len(values)
 
     for t in range(window, len(values)):
