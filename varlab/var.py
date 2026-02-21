@@ -109,6 +109,6 @@ def _parametric_var(
         distribution=distribution,
         df=df,
     )
-
+    # TODO: add mean estimate instead of assuming mean 0
     var_value = q * sigma
     return time_scaling(var_value, n_days)
