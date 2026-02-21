@@ -1,12 +1,37 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Literal
-from scipy.stats import norm, t
+from typing import Iterable, Optional, Literal, Dict, Any
+from dataclasses import dataclass
+from scipy.stats import norm, t, kstest
+import pandas as pd
 import numpy as np
 
 
-
 Dist = Literal["normal", "t"]
+
+@dataclass(frozen=True)
+class DistributionTestResult:
+    """
+    Standardized result container for distribution tests.
+
+    Attributes
+    ----------
+    test_name : str
+        Name of the statistical test.
+    statistic : Optional[float]
+        Test statistic value (if applicable).
+    p_value : Optional[float]
+        P-value under the null hypothesis.
+    reject : Optional[bool]
+        True if H0 rejected at chosen alpha.
+    info : Dict[str, Any]
+        Additional diagnostic information.
+    """
+    test_name: str
+    statistic: Optional[float]
+    p_value: Optional[float]
+    reject: Optional[bool]
+    info: Dict[str, Any]
 
 
 def _pit(
@@ -21,7 +46,7 @@ def _pit(
 
     The PIT is defined as:
 
-        U = F_X(x)
+        U = F_X(X)
 
     where F_X is the cumulative distribution function of the assumed
     parametric distribution.
@@ -57,8 +82,8 @@ def _pit(
     For correctly specified predictive distributions, PIT values
     should be i.i.d. Uniform(0, 1).
     """
-    if sigma <= 0:
-        raise ValueError("sigma must be positive")
+    if np.any(np.asarray(sigma) <= 0):
+        raise ValueError("sigma must be strictly positive")
 
     x: np.ndarray = np.asarray(values, dtype=float)
     d: str = dist.strip().lower()
@@ -123,3 +148,193 @@ def _randomized_pit(
     v: float = float(np.random.uniform(0.0, 1.0))
 
     return (less + v * equal) / n
+
+
+def _rolling_pit(
+    values: pd.Series,
+    case: Literal["continuous", "discrete"] = "continuous",
+    window: int = 60,
+    ddof: int = 1,
+) -> pd.Series:
+    """
+    Compute rolling PIT over a time series.
+
+    Parameters
+    ----------
+    values : pd.Series
+        Time series of observations.
+    case : {"continuous", "discrete"}
+        Type of distribution assumption.
+    window : int
+        Rolling window size.
+    ddof : int
+        Delta degrees of freedom for rolling std.
+
+    Returns
+    -------
+    pd.Series
+        Rolling PIT values aligned with input index.
+    """
+    if case not in {"continuous", "discrete"}:
+        raise ValueError("case must be either continuous or discrete")
+
+    if window < 1:
+        raise ValueError("window must be >= 1")
+
+    values = values.astype(float)
+
+    if case == "continuous":
+        mu = (
+            values
+            .rolling(window)
+            .mean()
+            .shift(1)
+        )
+        
+        sigma = (
+            values
+            .rolling(window)
+            .std(ddof=ddof)
+            .shift(1)
+        )
+
+        pit = norm.cdf(values, loc=mu, scale=sigma)
+
+        return pit
+
+    # discrete case
+    u = [np.nan] * len(values)
+
+    for t in range(window, len(values)):
+        hist = values.iloc[t - window:t].values
+        x = values.iloc[t]
+        u[t] = _randomized_pit(hist, x)
+
+    return pd.Series(u, index=values.index)
+
+
+def _expanding_pit(
+    values: pd.Series,
+    case: Literal["continuous", "discrete"] = "continuous",
+    min_periods: int = 30,
+    ddof: int = 1,
+) -> pd.Series:
+    """
+    Compute expanding-window PIT over a time series.
+
+    Parameters
+    ----------
+    values : pd.Series
+        Time series of observations.
+    case : {"continuous", "discrete"}
+        Distribution assumption.
+    min_periods : int
+        Minimum number of past observations required to compute PIT.
+    ddof : int
+        Delta degrees of freedom for standard deviation estimation.
+
+    Returns
+    -------
+    pd.Series
+        Expanding PIT values aligned with input index.
+        First `min_periods` values are NaN.
+    """
+    if case not in {"continuous", "discrete"}:
+        raise ValueError("case must be either continuous or discrete")
+
+    if min_periods < 1:
+        raise ValueError("min_periods must be >= 1")
+
+    values = values.astype(float)
+
+    u = [np.nan] * len(values)
+
+    for t in range(min_periods, len(values)):
+        hist = values.iloc[:t]
+
+        if case == "continuous":
+            mu = hist.mean()
+            sigma = hist.std(ddof=ddof)
+
+            if sigma <= 0 or np.isnan(sigma):
+                continue
+
+            u[t] = norm.cdf(values.iloc[t], loc=mu, scale=sigma)
+
+        else:
+            u[t] = _randomized_pit(hist.values, values.iloc[t])
+
+    return pd.Series(u, index=values.index)
+
+
+def kolmogorov_uniform(
+    values: pd.Series,
+    case: Literal["continuous", "discrete"] = "continuous",
+    window_type: Literal["expanding", "rolling"] = "rolling",
+    window: int = 60,
+    min_periods: int = 60,
+    ddof: int = 1,
+) -> DistributionTestResult:
+    """
+    Perform a Kolmogorov-Smirnov test for uniformity on PIT values.
+
+    The function computes Probability Integral Transform (PIT)
+    values using either a rolling or expanding estimation window
+    and tests whether the resulting series follows a Uniform(0, 1)
+    distribution.
+
+    Parameters
+    ----------
+    values : pd.Series
+        Time series of realized losses L_t.
+    case : {"continuous", "discrete"}, default="continuous"
+        Type of PIT construction:
+        - "continuous": parametric PIT using estimated mean and variance.
+        - "discrete": randomized PIT based on empirical distribution.
+    window_type : {"expanding", "rolling"}, default="rolling"
+        Estimation scheme for forecast distribution F_t.
+    window : int, default=60
+        Rolling window length (used if window_type="rolling").
+    min_periods : int, default=60
+        Minimum expanding sample size (used if window_type="expanding").
+    ddof : int, default=1
+        Delta degrees of freedom for variance estimation.
+
+    Returns
+    -------
+    DistributionTestResult
+        Object containing:
+        - test statistic
+        - p-value
+        - rejection decision at 5%
+        - effective sample size
+
+    Notes
+    -----
+    Under the null hypothesis of correct density specification:
+
+        H0: F_t = F_t^*  for all t,
+
+    the PIT values U_t = F_t(L_t) should be i.i.d. Uniform(0, 1).
+
+    This test evaluates the marginal uniformity condition only.
+    It does not test independence.
+    """
+    if window_type == "rolling":
+        u = _rolling_pit(values, case, window, ddof)
+    else:
+        u = _expanding_pit(values, case, min_periods, ddof)
+
+    u = pd.Series(u).dropna()
+
+    stat, pval = kstest(u, "uniform")
+
+    return DistributionTestResult(
+        test_name="Kolmogorov-Smirnov Uniform Test",
+        statistic=float(stat),
+        p_value=float(pval),
+        reject=pval < 0.05,
+        info={
+            "sample_size": int(len(u)),
+        },
+    )
