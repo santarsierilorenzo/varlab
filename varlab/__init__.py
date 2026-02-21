@@ -1,7 +1,8 @@
 from .var import var
 from .es import es
-
-__all__ = [
-    "var",
-    "es",
-]
+from .window import (
+    rolling_es,
+    rolling_var,
+    expanding_es,
+    expanding_var
+)
