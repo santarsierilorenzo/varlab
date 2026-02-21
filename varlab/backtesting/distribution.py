@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Literal, Dict, Any
-from dataclasses import dataclass
+from typing import Iterable, Optional, Literal, Dict, Any, Union
+from statsmodels.tsa.stattools import bds
 from scipy.stats import norm, t, kstest
+from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 
@@ -28,8 +29,8 @@ class DistributionTestResult:
         Additional diagnostic information.
     """
     test_name: str
-    statistic: Optional[float]
-    p_value: Optional[float]
+    statistic: Optional[Union[float, np.ndarray]]
+    p_value: Optional[Union[float, np.ndarray]]
     reject: Optional[bool]
     info: Dict[str, Any]
 
@@ -267,38 +268,22 @@ def _expanding_pit(
     return pd.Series(u, index=values.index)
 
 
-def kolmogorov_uniform(
-    values: pd.Series,
-    case: Literal["continuous", "discrete"] = "continuous",
-    window_type: Literal["expanding", "rolling"] = "rolling",
-    window: int = 60,
-    min_periods: int = 60,
-    ddof: int = 1,
+def _kolmogorov_test(
+    pit: pd.Series,
+    alpha: float = 0.05,
 ) -> DistributionTestResult:
     """
     Perform a Kolmogorov-Smirnov test for uniformity on PIT values.
 
-    The function computes Probability Integral Transform (PIT)
-    values using either a rolling or expanding estimation window
-    and tests whether the resulting series follows a Uniform(0, 1)
-    distribution.
+    The function tests whether the provided PIT series follows
+    a Uniform(0, 1) distribution.
 
     Parameters
     ----------
-    values : pd.Series
-        Time series of realized losses L_t.
-    case : {"continuous", "discrete"}, default="continuous"
-        Type of PIT construction:
-        - "continuous": parametric PIT using estimated mean and variance.
-        - "discrete": randomized PIT based on empirical distribution.
-    window_type : {"expanding", "rolling"}, default="rolling"
-        Estimation scheme for forecast distribution F_t.
-    window : int, default=60
-        Rolling window length (used if window_type="rolling").
-    min_periods : int, default=60
-        Minimum expanding sample size (used if window_type="expanding").
-    ddof : int, default=1
-        Delta degrees of freedom for variance estimation.
+    pit : pd.Series
+        Series of PIT values.
+    alpha : float, default=0.05
+        Significance level.
 
     Returns
     -------
@@ -306,35 +291,115 @@ def kolmogorov_uniform(
         Object containing:
         - test statistic
         - p-value
-        - rejection decision at 5%
+        - rejection decision
         - effective sample size
 
     Notes
     -----
-    Under the null hypothesis of correct density specification:
+    Under the null hypothesis:
 
-        H0: F_t = F_t^*  for all t,
-
-    the PIT values U_t = F_t(L_t) should be i.i.d. Uniform(0, 1).
+        H0: U_t ~ Uniform(0, 1)
 
     This test evaluates the marginal uniformity condition only.
-    It does not test independence.
+    KS assumes independence; results may be size-distorted when PIT is
+    constructed via overlapping windows.
     """
-    if window_type == "rolling":
-        u = _rolling_pit(values, case, window, ddof)
-    else:
-        u = _expanding_pit(values, case, min_periods, ddof)
+    u = pd.Series(pit).dropna().astype(float)
 
-    u = pd.Series(u).dropna()
+    if len(u) < 20:
+        raise ValueError("Sample too small for KS test")
 
-    stat, pval = kstest(u, "uniform")
+    if (u < 0).any() or (u > 1).any():
+        raise ValueError("PIT values outside [0, 1]")
+
+    stat, pval = kstest(u.values, "uniform")
 
     return DistributionTestResult(
         test_name="Kolmogorov-Smirnov Uniform Test",
         statistic=float(stat),
         p_value=float(pval),
-        reject=pval < 0.05,
+        reject=bool(pval < alpha),
         info={
             "sample_size": int(len(u)),
+            "alpha": alpha,
         },
     )
+
+
+def _independence_test(
+    pit: pd.Series,
+    max_dim: int = 4,
+    alpha: float = 0.05,
+) -> DistributionTestResult:
+    """
+    Perform BDS test for i.i.d. hypothesis on PIT values.
+
+    H0: PIT series is i.i.d.
+    """
+    u = pd.Series(pit).dropna().astype(float)
+
+    if len(u) < 100:
+        raise ValueError("Sample too small for reliable BDS test")
+
+    epsilon = 0.5 * np.std(u.values, ddof=1)
+
+    stats, pvals = bds(
+        u.values,
+        max_dim=max_dim,
+        epsilon=epsilon,
+    )
+
+    reject = bool(np.any(pvals < alpha))
+
+    return DistributionTestResult(
+        test_name="BDS Independence Test",
+        statistic=stats,
+        p_value=pvals,
+        reject=reject,
+        info={
+            "sample_size": int(len(u)),
+            "alpha": alpha,
+            "max_dim": max_dim,
+        },
+    )
+
+
+def pit_diagnostics(
+    values: pd.Series,
+    case: Literal["continuous", "discrete"] = "continuous",
+    window_type: Literal["expanding", "rolling"] = "rolling",
+    window: int = 60,
+    min_periods: int = 60,
+    ddof: int = 1,
+    max_dim: int = 4,
+    alpha: float = 0.05,
+) -> Dict[str, DistributionTestResult]:
+    """
+    Run full PIT diagnostics: marginal uniformity and independence.
+
+    Returns
+    -------
+    dict
+        {
+            "uniformity": KS result,
+            "independence": BDS result
+        }
+    """
+    if window_type == "rolling":
+        pit = _rolling_pit(values, case, window, ddof)
+    else:
+        pit = _expanding_pit(values, case, min_periods, ddof)
+
+    pit = pit.dropna()
+
+    ks_res = _kolmogorov_test(pit, alpha=alpha)
+    bds_res = _independence_test(
+        pit,
+        max_dim=max_dim,
+        alpha=alpha,
+    )
+
+    return {
+        "uniformity": ks_res,
+        "independence": bds_res,
+    }
