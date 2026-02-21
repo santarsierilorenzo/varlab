@@ -2,7 +2,7 @@
 Distribution tests for VaR backtesting.
 
 This module implements statistically rigorous tests used in Value-at-Risk
-(VaR) model validation
+(VaR) model validation.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import numpy as np
 
 Dist = Literal["normal", "t"]
 
+
 @dataclass(frozen=True)
 class DistributionTestResult:
     """
@@ -26,9 +27,9 @@ class DistributionTestResult:
     ----------
     test_name : str
         Name of the statistical test.
-    statistic : Optional[float]
-        Test statistic value (if applicable).
-    p_value : Optional[float]
+    statistic : Optional[Union[float, np.ndarray]]
+        Test statistic value.
+    p_value : Optional[Union[float, np.ndarray]]
         P-value under the null hypothesis.
     reject : Optional[bool]
         True if H0 rejected at chosen alpha.
@@ -44,8 +45,8 @@ class DistributionTestResult:
 
 def _pit(
     values: Iterable[float],
-    mu: float,
-    sigma: float,
+    mu: Union[float, np.ndarray],
+    sigma: Union[float, np.ndarray],
     dist: Dist = "normal",
     df: Optional[float] = None,
 ) -> np.ndarray:
@@ -63,38 +64,35 @@ def _pit(
     ----------
     values : Iterable[float]
         Observations at which the CDF is evaluated.
-    mu : float
-        Location parameter of the distribution.
-    sigma : float
-        Scale parameter of the distribution. Must be strictly positive.
+    mu : float or np.ndarray
+        Location parameter(s) of the distribution.
+    sigma : float or np.ndarray
+        Scale parameter(s). Must be strictly positive.
     dist : {"normal", "t"}, default="normal"
         Parametric distribution used to compute the CDF.
     df : float, optional
-        Degrees of freedom of the Student's t distribution.
+        Degrees of freedom for Student's t distribution.
         Required if dist="t".
 
     Returns
     -------
     np.ndarray
-        Array of PIT values in the interval [0, 1].
+        Array of PIT values in [0, 1].
 
     Raises
     ------
     ValueError
-        If sigma <= 0 or if df is missing/invalid when dist="t".
+        If sigma <= 0 or invalid df.
     NotImplementedError
-        If the specified distribution is not supported.
-
-    Notes
-    -----
-    For correctly specified predictive distributions, PIT values
-    should be i.i.d. Uniform(0, 1).
+        If distribution not supported.
     """
-    if np.any(np.asarray(sigma) <= 0):
+    x = np.asarray(values, dtype=float)
+    sigma_arr = np.asarray(sigma)
+
+    if np.any(sigma_arr <= 0):
         raise ValueError("sigma must be strictly positive")
 
-    x: np.ndarray = np.asarray(values, dtype=float)
-    d: str = dist.strip().lower()
+    d = dist.strip().lower()
 
     if d == "normal":
         return norm.cdf(x, loc=mu, scale=sigma)
@@ -124,38 +122,20 @@ def _randomized_pit(
         - F(x^-) is the left-limit of the empirical CDF,
         - P(X = x) is the empirical probability mass at x,
         - V ~ Uniform(0, 1).
-
-    Parameters
-    ----------
-    history : Iterable[float]
-        Historical observations defining the empirical distribution.
-        NaN values are ignored.
-    x : float
-        Observation at which the randomized PIT is evaluated.
-
-    Returns
-    -------
-    float
-        Randomized PIT value in the interval [0, 1].
-
-    Raises
-    ------
-    ValueError
-        If history is empty after removing NaN values.
     """
-    hist: np.ndarray = np.asarray(history, dtype=float)
+    hist = np.asarray(history, dtype=float)
     hist = hist[~np.isnan(hist)]
 
-    n: int = hist.size
+    n = hist.size
     if n == 0:
         raise ValueError("history must not be empty")
 
-    less: int = int(np.sum(hist < x))
-    equal: int = int(np.sum(hist == x))
+    less = np.sum(hist < x)
+    equal = np.sum(hist == x)
 
-    v: float = float(np.random.uniform(0.0, 1.0))
+    v = np.random.uniform(0.0, 1.0)
 
-    return (less + v * equal) / n
+    return float((less + v * equal) / n)
 
 
 def _rolling_pit(
@@ -166,22 +146,6 @@ def _rolling_pit(
 ) -> pd.Series:
     """
     Compute rolling PIT over a time series.
-
-    Parameters
-    ----------
-    values : pd.Series
-        Time series of observations.
-    case : {"continuous", "discrete"}
-        Type of distribution assumption.
-    window : int
-        Rolling window size.
-    ddof : int
-        Delta degrees of freedom for rolling std.
-
-    Returns
-    -------
-    pd.Series
-        Rolling PIT values aligned with input index.
     """
     if case not in {"continuous", "discrete"}:
         raise ValueError("case must be either continuous or discrete")
@@ -192,21 +156,20 @@ def _rolling_pit(
     values = values.astype(float)
 
     if case == "continuous":
-        mu = (
-            values
-            .rolling(window)
-            .mean()
-            .shift(1)
-        )
-        
-        sigma = (
-            values
-            .rolling(window)
-            .std(ddof=ddof)
-            .shift(1)
-        )
+        mu = values.rolling(window).mean().shift(1)
+        sigma = values.rolling(window).std(ddof=ddof).shift(1)
 
-        pit = norm.cdf(values, loc=mu, scale=sigma)
+        pit = pd.Series(np.nan, index=values.index)
+
+        valid = (~mu.isna()) & (~sigma.isna()) & (sigma > 0)
+
+        if valid.any():
+            pit[valid] = _pit(
+                values[valid],
+                mu=mu[valid].values,
+                sigma=sigma[valid].values,
+                dist="normal",
+            )
 
         return pit
 
@@ -229,23 +192,6 @@ def _expanding_pit(
 ) -> pd.Series:
     """
     Compute expanding-window PIT over a time series.
-
-    Parameters
-    ----------
-    values : pd.Series
-        Time series of observations.
-    case : {"continuous", "discrete"}
-        Distribution assumption.
-    min_periods : int
-        Minimum number of past observations required to compute PIT.
-    ddof : int
-        Delta degrees of freedom for standard deviation estimation.
-
-    Returns
-    -------
-    pd.Series
-        Expanding PIT values aligned with input index.
-        First `min_periods` values are NaN.
     """
     if case not in {"continuous", "discrete"}:
         raise ValueError("case must be either continuous or discrete")
@@ -267,8 +213,12 @@ def _expanding_pit(
             if sigma <= 0 or np.isnan(sigma):
                 continue
 
-            u[t] = norm.cdf(values.iloc[t], loc=mu, scale=sigma)
-
+            u[t] = _pit(
+                [values.iloc[t]],
+                mu=mu,
+                sigma=sigma,
+                dist="normal",
+            )[0]
         else:
             u[t] = _randomized_pit(hist.values, values.iloc[t])
 
@@ -282,34 +232,10 @@ def _kolmogorov_test(
     """
     Perform a Kolmogorov-Smirnov test for uniformity on PIT values.
 
-    The function tests whether the provided PIT series follows
-    a Uniform(0, 1) distribution.
+    H0: U_t ~ Uniform(0, 1)
 
-    Parameters
-    ----------
-    pit : pd.Series
-        Series of PIT values.
-    alpha : float, default=0.05
-        Significance level.
-
-    Returns
-    -------
-    DistributionTestResult
-        Object containing:
-        - test statistic
-        - p-value
-        - rejection decision
-        - effective sample size
-
-    Notes
-    -----
-    Under the null hypothesis:
-
-        H0: U_t ~ Uniform(0, 1)
-
-    This test evaluates the marginal uniformity condition only.
-    KS assumes independence; results may be size-distorted when PIT is
-    constructed via overlapping windows.
+    KS assumes independence; results may be size-distorted when PIT
+    is constructed via overlapping windows.
     """
     u = pd.Series(pit).dropna().astype(float)
 
@@ -383,14 +309,6 @@ def pit_diagnostics(
 ) -> Dict[str, DistributionTestResult]:
     """
     Run full PIT diagnostics: marginal uniformity and independence.
-
-    Returns
-    -------
-    dict
-        {
-            "uniformity": KS result,
-            "independence": BDS result
-        }
     """
     if window_type == "rolling":
         pit = _rolling_pit(values, case, window, ddof)
