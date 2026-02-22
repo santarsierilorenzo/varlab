@@ -1,3 +1,12 @@
+"""
+VaR backtesting statistical tests.
+
+Includes:
+    - Coverage tests
+    - Independence tests
+    - Distribution diagnostics (PIT-based)
+"""
+
 from .coverage import (
     exact_binomial_coverage_test,
     kupiec_pof_test,
@@ -18,14 +27,17 @@ from .distribution import (
 )
 
 __all__ = [
+    # Coverage
     "exact_binomial_coverage_test",
     "kupiec_pof_test",
     "basel_traffic_light_test",
     "christoffersen_conditional_coverage_test",
     "CoverageTestResult",
+    # Independence
     "christoffersen_test",
     "loss_quantile_independence_test",
     "IndependenceTestResult",
+    # Distribution
     "pit_diagnostics",
     "DistributionTestResult",
 ]

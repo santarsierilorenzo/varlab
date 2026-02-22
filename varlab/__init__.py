@@ -1,12 +1,26 @@
-from . import backtesting
+"""
+Risk metrics and VaR backtesting toolkit.
+
+Public API:
+    - var
+    - es
+    - rolling_var
+    - rolling_es
+    - expanding_var
+    - expanding_es
+    - backtesting
+"""
+
 from .var import var
 from .es import es
 from .window import (
-    rolling_es,
     rolling_var,
+    rolling_es,
+    expanding_var,
     expanding_es,
-    expanding_var
 )
+
+from . import backtesting
 
 __all__ = [
     "var",
