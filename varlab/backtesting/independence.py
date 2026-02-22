@@ -186,7 +186,8 @@ def loss_quantile_independence_test(
     eps: float = 1e-12,
     n_sim: int = 20_000,
     seed: Optional[int] = 0,
-    ddof: int = 1
+    ddof: int = 1,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> IndependenceTestResult:
     """
     Loss-Quantile Independence Test based on maximum autocorrelation.
@@ -278,6 +279,7 @@ def loss_quantile_independence_test(
             df=df,
             window=window,
             ddof=ddof,
+            mean=mean,
         )
     else:
         pit = expanding_pit(
@@ -287,6 +289,7 @@ def loss_quantile_independence_test(
             df=df,
             min_periods=min_periods,
             ddof=ddof,
+            mean=mean,
         )
 
     if max_lag < 1:
