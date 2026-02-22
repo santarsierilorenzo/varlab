@@ -66,6 +66,12 @@ def christoffersen_test(
     # Convert exceedances to binary numpy array
     x = np.asarray(exceedances, dtype="int64")
 
+    if len(x) < 2:
+        raise ValueError("At least two observations required.")
+
+    if not set(np.unique(x)).issubset({0, 1}):
+        raise ValueError("Exceedances must be binary (0/1).")
+
     # Split into previous and current states
     # Transitions are defined from t-1 to t
     prev = x[:-1]
