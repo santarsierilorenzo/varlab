@@ -67,6 +67,7 @@ def rolling_pit(
     df: Optional[int] = None,
     window: int = 60,
     ddof: int = 1,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> pd.Series:
     """
     Rolling PIT consistent with mean-zero parametric VaR.
@@ -83,14 +84,24 @@ def rolling_pit(
     values = values.astype(float)
 
     if case == "continuous":
+        mu = (
+            values.rolling(window).mean().shift(1)
+            if mean == "sample"
+            else 0.0
+        )
+
         sigma = values.rolling(window).std(ddof=ddof).shift(1)
+
         pit = pd.Series(np.nan, index=values.index)
         valid = (~sigma.isna()) & (sigma > 0)
 
         if not valid.any():
             return pit
 
-        z = values[valid] / sigma[valid]
+        if mean == "sample":
+            z = (values[valid] - mu[valid]) / sigma[valid]
+        else:
+            z = values[valid] / sigma[valid]
 
         if distribution == "normal":
             pit[valid] = norm.cdf(z)
@@ -117,6 +128,7 @@ def expanding_pit(
     df: Optional[int] = None,
     min_periods: int = 30,
     ddof: int = 1,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> pd.Series:
     """
     Expanding-window PIT consistent with mean-zero parametric VaR.
@@ -132,18 +144,26 @@ def expanding_pit(
     for t_idx in range(min_periods, len(values)):
         hist = values.iloc[:t_idx]
 
-        if case == "continuous":
-            sigma = hist.std(ddof=ddof)
+        for t_idx in range(min_periods, len(values)):
+            hist = values.iloc[:t_idx]
 
-            if sigma <= 0 or np.isnan(sigma):
-                continue
+            if case == "continuous":
+                sigma = hist.std(ddof=ddof)
 
-            z = values.iloc[t_idx] / sigma
+                if sigma <= 0 or np.isnan(sigma):
+                    continue
 
-            if distribution == "normal":
-                u[t_idx] = norm.cdf(z)
+                mu = hist.mean() if mean == "sample" else 0.0
+
+                z = (values.iloc[t_idx] - mu) / sigma
+
+                if distribution == "normal":
+                    u[t_idx] = norm.cdf(z)
+                else:
+                    u[t_idx] = t.cdf(z, df=df)
+
             else:
-                u[t_idx] = t.cdf(z, df=df)
+                u[t_idx] = randomized_pit(hist.values, values.iloc[t_idx])
 
         else:
             u[t_idx] = randomized_pit(hist.values, values.iloc[t_idx])
