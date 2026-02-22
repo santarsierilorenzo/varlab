@@ -20,6 +20,7 @@ def var(
     distribution: str = "normal",
     df: Optional[int] = None,
     lamb: Optional[float] = None,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> float:
     """
     Compute Value at Risk (VaR) for a return series or portfolio.
@@ -80,6 +81,7 @@ def var(
             gamma=confidence,
             n_days=n_days,
             lamb=lamb,
+            mean=mean,
         )
 
     if method == "parametric":

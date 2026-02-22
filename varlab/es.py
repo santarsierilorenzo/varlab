@@ -21,6 +21,7 @@ def es(
     distribution: str = "normal",
     df: Optional[int] = None,
     lamb: Optional[float] = None,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> float:
     """
     Compute Expected Shortfall (ES).
@@ -90,6 +91,7 @@ def es(
             weights=weights,
             distribution=distribution,
             df=df,
+            mean=mean,
         )
 
     raise ValueError(f"Unsupported ES method: {method}.")
