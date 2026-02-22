@@ -75,15 +75,6 @@ def var(
     if not 0.0 < confidence < 1.0:
         raise ValueError("confidence must be in (0, 1).")
 
-    if method == "empirical":
-        return _empirical_var(
-            losses=losses,
-            gamma=confidence,
-            n_days=n_days,
-            lamb=lamb,
-            mean=mean,
-        )
-
     if method == "parametric":
         return _parametric_var(
             losses=losses,
@@ -92,6 +83,16 @@ def var(
             weights=weights,
             distribution=distribution,
             df=df,
+            mean=mean,
+        )
+    
+    if method == "empirical":
+        return _empirical_var(
+            losses=losses,
+            gamma=confidence,
+            n_days=n_days,
+            lamb=lamb,
+            
         )
 
     raise ValueError(f"Unsupported VaR method: {method}.")
