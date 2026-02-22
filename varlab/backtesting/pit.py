@@ -61,7 +61,7 @@ def randomized_pit(
 
 
 def rolling_pit(
-    values: pd.Series,
+    returns: pd.Series,
     case: Literal["continuous", "discrete"] = "continuous",
     distribution: Dist = "normal",
     df: Optional[int] = None,
@@ -81,27 +81,27 @@ def rolling_pit(
     if window < 1:
         raise ValueError("window must be >= 1")
 
-    values = values.astype(float)
+    returns = returns.astype(float)
 
     if case == "continuous":
         mu = (
-            values.rolling(window).mean().shift(1)
+            returns.rolling(window).mean().shift(1)
             if mean == "sample"
             else 0.0
         )
 
-        sigma = values.rolling(window).std(ddof=ddof).shift(1)
+        sigma = returns.rolling(window).std(ddof=ddof).shift(1)
 
-        pit = pd.Series(np.nan, index=values.index)
+        pit = pd.Series(np.nan, index=returns.index)
         valid = (~sigma.isna()) & (sigma > 0)
 
         if not valid.any():
             return pit
 
         if mean == "sample":
-            z = (values[valid] - mu[valid]) / sigma[valid]
+            z = (returns[valid] - mu[valid]) / sigma[valid]
         else:
-            z = values[valid] / sigma[valid]
+            z = returns[valid] / sigma[valid]
 
         if distribution == "normal":
             pit[valid] = norm.cdf(z)
@@ -111,18 +111,18 @@ def rolling_pit(
         return pit
 
     # Discrete case
-    u = [np.nan] * len(values)
+    u = [np.nan] * len(returns)
 
-    for t_idx in range(window, len(values)):
-        hist = values.iloc[t_idx - window:t_idx].values
-        x = values.iloc[t_idx]
+    for t_idx in range(window, len(returns)):
+        hist = returns.iloc[t_idx - window:t_idx].returns
+        x = returns.iloc[t_idx]
         u[t_idx] = randomized_pit(hist, x)
 
-    return pd.Series(u, index=values.index)
+    return pd.Series(u, index=returns.index)
 
 
 def expanding_pit(
-    values: pd.Series,
+    returns: pd.Series,
     case: Literal["continuous", "discrete"] = "continuous",
     distribution: Dist = "normal",
     df: Optional[int] = None,
@@ -138,14 +138,14 @@ def expanding_pit(
     if min_periods < 1:
         raise ValueError("min_periods must be >= 1")
 
-    values = values.astype(float)
-    u = [np.nan] * len(values)
+    returns = returns.astype(float)
+    u = [np.nan] * len(returns)
 
-    for t_idx in range(min_periods, len(values)):
-        hist = values.iloc[:t_idx]
+    for t_idx in range(min_periods, len(returns)):
+        hist = returns.iloc[:t_idx]
 
-        for t_idx in range(min_periods, len(values)):
-            hist = values.iloc[:t_idx]
+        for t_idx in range(min_periods, len(returns)):
+            hist = returns.iloc[:t_idx]
 
             if case == "continuous":
                 sigma = hist.std(ddof=ddof)
@@ -155,7 +155,7 @@ def expanding_pit(
 
                 mu = hist.mean() if mean == "sample" else 0.0
 
-                z = (values.iloc[t_idx] - mu) / sigma
+                z = (returns.iloc[t_idx] - mu) / sigma
 
                 if distribution == "normal":
                     u[t_idx] = norm.cdf(z)
@@ -163,9 +163,9 @@ def expanding_pit(
                     u[t_idx] = t.cdf(z, df=df)
 
             else:
-                u[t_idx] = randomized_pit(hist.values, values.iloc[t_idx])
+                u[t_idx] = randomized_pit(hist.returns, returns.iloc[t_idx])
 
         else:
-            u[t_idx] = randomized_pit(hist.values, values.iloc[t_idx])
+            u[t_idx] = randomized_pit(hist.returns, returns.iloc[t_idx])
 
-    return pd.Series(u, index=values.index)
+    return pd.Series(u, index=returns.index)

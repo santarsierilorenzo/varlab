@@ -117,7 +117,7 @@ def _parametric_var(
     where z_gamma is the gamma-quantile of the standardized distribution.
     """
     sigma = estimate_sigma(
-        returns=losses,
+        values=losses,
         weights=weights,
     )
 

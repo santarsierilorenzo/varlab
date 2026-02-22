@@ -109,7 +109,7 @@ def _parametric_es(
         ES_N = N * mu + sqrt(N) * ES_1_centered
     """
     sigma = estimate_sigma(
-        returns=losses,
+        values=losses,
         weights=weights,
     )
 
