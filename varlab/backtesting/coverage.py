@@ -73,7 +73,7 @@ def _validate_probability(
 
 def exact_binomial_coverage_test(
     exceedances: Sequence[int],
-    confidence_level: float,
+    confidence: float,
     alpha: Optional[float] = None,
 ) -> CoverageTestResult:
     """
@@ -83,7 +83,7 @@ def exact_binomial_coverage_test(
 
         H0 : q* = q
 
-    where q = 1 - confidence_level.
+    where q = 1 - confidence.
 
     The total number of exceedances follows Binomial(T, q)
     under H0.
@@ -92,7 +92,7 @@ def exact_binomial_coverage_test(
     ----------
     exceedances : Sequence[int]
         Binary exceedance indicators.
-    confidence_level : float
+    confidence : float
         VaR confidence level.
     alpha : Optional[float]
         Significance level. If provided, reject decision returned.
@@ -102,14 +102,14 @@ def exact_binomial_coverage_test(
     CoverageTestResult
     """
     arr = _validate_exceedances(exceedances)
-    _validate_probability(confidence_level, "confidence_level")
+    _validate_probability(confidence, "confidence")
 
     if alpha is not None:
         _validate_probability(alpha, "alpha")
 
     t: int = len(arr)
     x: int = int(np.sum(arr))
-    q: float = 1.0 - confidence_level
+    q: float = 1.0 - confidence
 
     p_value: float = 2.0 * min(
         binom.cdf(x, t, q),
@@ -137,7 +137,7 @@ def exact_binomial_coverage_test(
 
 def kupiec_pof_test(
     exceedances: Sequence[int],
-    confidence_level: float,
+    confidence: float,
     alpha: Optional[float] = None,
 ) -> CoverageTestResult:
     """
@@ -153,7 +153,7 @@ def kupiec_pof_test(
     ----------
     exceedances : Sequence[int]
         Binary exceedance indicators.
-    confidence_level : float
+    confidence : float
         VaR confidence level.
     alpha : Optional[float]
         Significance level.
@@ -163,7 +163,7 @@ def kupiec_pof_test(
     CoverageTestResult
     """
     arr = _validate_exceedances(exceedances)
-    _validate_probability(confidence_level, "confidence_level")
+    _validate_probability(confidence, "confidence")
 
     if alpha is not None:
         _validate_probability(alpha, "alpha")
@@ -171,7 +171,7 @@ def kupiec_pof_test(
     t: int = len(arr)
     x: int = int(np.sum(arr))
 
-    q: float = 1.0 - confidence_level
+    q: float = 1.0 - confidence
     q_hat: float = x / t
 
     # Handle edge cases explicitly (no crashes)
@@ -215,7 +215,7 @@ def kupiec_pof_test(
 
 def basel_traffic_light_test(
     exceedances: Sequence[int],
-    confidence_level: float,
+    confidence: float,
 ) -> CoverageTestResult:
     """
     Basel Traffic Light classification for one-day 99% VaR.
@@ -232,14 +232,14 @@ def basel_traffic_light_test(
     ----------
     exceedances : Sequence[int]
         Binary exceedance indicators (1 if loss > VaR, else 0).
-    confidence_level : float
+    confidence : float
         VaR confidence level. Must be exactly 0.99.
 
     Returns
     -------
     CoverageTestResult
     """
-    if confidence_level != 0.99:
+    if confidence != 0.99:
         raise ValueError(
             "Basel Traffic Light is defined only for 99% VaR."
         )
@@ -281,7 +281,7 @@ def basel_traffic_light_test(
         reject=None,
         info={
             "window": window,
-            "confidence_level": confidence_level,
+            "confidence": confidence,
             "violations": violations,
             "zone": zone,
             "multiplier": multiplier,
@@ -291,7 +291,7 @@ def basel_traffic_light_test(
 
 def christoffersen_conditional_coverage_test(
     exceedances: Sequence[int],
-    confidence_level: float,
+    confidence: float,
     alpha: Optional[float] = None,
 ) -> CoverageTestResult:
     """
@@ -316,7 +316,7 @@ def christoffersen_conditional_coverage_test(
     # Unconditional coverage (Kupiec)
     kupiec_res = kupiec_pof_test(
         exceedances,
-        confidence_level,
+        confidence,
         alpha=None,
     )
 
@@ -346,7 +346,7 @@ def christoffersen_conditional_coverage_test(
         reject=reject,
         info={
             "sample_size": kupiec_res.info["sample_size"],
-            "confidence_level": confidence_level,
+            "confidence": confidence,
             "lr_uc": float(lr_uc),
             "lr_ind": float(lr_ind),
             "df": 2,
