@@ -236,9 +236,6 @@ def _independence_test(
     )
 
 
-from scipy.stats import norm, chi2
-
-
 def _berkowitz_test(
     pit: pd.Series,
     alpha: float = 0.05,
