@@ -203,7 +203,7 @@ def _berkowitz_test(
         p_value=float(pval),
         reject=bool(pval < alpha),
         info={
-            "sample_size": int(len(z)),
+            "sample_size": int(len(z[1:])),
             "alpha": alpha,
             "c_hat": float(c_hat),
             "rho_hat": float(rho_hat),
