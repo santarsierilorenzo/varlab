@@ -1,20 +1,20 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Literal
 import numpy as np
 from .base import (
     estimate_sigma,
     weighted_sorted_dist,
-    left_tail_quantile,
+    tail_quantile,
     time_scaling,
 )
 
 ArrayLike = Iterable[float]
-
+Method = Literal["empirical", "parametric"]
 
 def var(
     returns: ArrayLike,
     n_days: int = 1,
     confidence: float = 0.99,
-    method: str = "empirical",
+    method: Method = "empirical",
     weights: Optional[ArrayLike] = None,
     distribution: str = "normal",
     df: Optional[int] = None,
@@ -104,7 +104,7 @@ def _parametric_var(
         weights=weights,
     )
 
-    q = left_tail_quantile(
+    q = tail_quantile(
         gamma=gamma,
         distribution=distribution,
         df=df,

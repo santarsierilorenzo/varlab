@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Callable, Iterable, Any, Optional
-from varlab import var, es
+from .var import var
 import pandas as pd
+from .es import es
 import numpy as np
 
 

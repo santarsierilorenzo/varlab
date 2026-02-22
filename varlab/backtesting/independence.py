@@ -7,10 +7,12 @@ Value-at-Risk (VaR) model validation.
 
 from __future__ import annotations
 
-from typing import Optional, Literal, Dict, Any, Union, Sequence
-from statsmodels.tsa.stattools import bds
-from scipy.stats import chi2
+from typing import Optional, Literal, Dict, Any, Union, Sequence, Iterable
+from .pit import rolling_pit, expanding_pit
+from statsmodels.tsa.stattools import acf
+from scipy.stats import chi2, norm
 from dataclasses import dataclass
+import pandas as pd
 import numpy as np
 
 
@@ -94,8 +96,22 @@ def christoffersen_test(
     # π1_hat = P(I_t = 1 | I_{t-1} = 1)
     #
     # Clipping avoids log(0) in likelihood evaluation.
-    m_hat_0 = np.clip(n01 / (n00 + n01), eps, 1 - eps)
-    m_hat_1 = np.clip(n11 / (n10 + n11), eps, 1 - eps)
+    denom_0 = n00 + n01
+    denom_1 = n10 + n11
+
+    if denom_0 == 0:
+        # No transitions starting from state 0.
+        # Under this extreme case, likelihood contribution
+        # from state 0 transitions is zero.
+        m_hat_0 = eps
+    else:
+        m_hat_0 = np.clip(n01 / denom_0, eps, 1.0 - eps)
+
+    if denom_1 == 0:
+        # No transitions starting from state 1.
+        m_hat_1 = eps
+    else:
+        m_hat_1 = np.clip(n11 / denom_1, eps, 1.0 - eps)
 
     # MLE under the null (independence)
     #
@@ -109,7 +125,11 @@ def christoffersen_test(
     #
     # where N = total number of transitions = T - 1.
     N = n00 + n01 + n10 + n11
-    p_hat = np.clip((n01 + n11) / N, eps, 1 - eps)
+
+    if N == 0:
+        raise ValueError("Insufficient transitions for test.")
+
+    p_hat = np.clip((n01 + n11) / N, eps, 1.0 - eps)
 
     # Log-likelihood under H0 (independent Bernoulli process)
     l0 = (
@@ -152,3 +172,168 @@ def christoffersen_test(
         },
     )
 
+
+def loss_quantile_independence_test(
+    values: Iterable,
+    case: Literal["continuous", "discrete"] = "continuous",
+    distribution: Dist = "normal",
+    df: Optional[int] = None,
+    window_type: Literal["rolling", "expanding"] = "rolling",
+    window: int = 60,
+    min_periods: int = 60,
+    max_lag: int = 5,
+    alpha: float = 0.05,
+    eps: float = 1e-12,
+    n_sim: int = 20_000,
+    seed: Optional[int] = 0,
+    ddof: int = 1
+) -> IndependenceTestResult:
+    """
+    Loss-Quantile Independence Test based on maximum autocorrelation.
+
+    This test evaluates the serial independence of Probability Integral
+    Transform (PIT) values associated with loss quantiles.
+
+    Procedure
+    ---------
+    1. Compute PIT values using either rolling or expanding window.
+    2. Apply the probit transform:
+
+           z_t = Φ^{-1}(u_t)
+
+       Under correct model specification:
+           z_t ~ i.i.d. N(0,1)
+
+    3. Compute sample autocorrelations up to lag `max_lag`.
+    4. Define the test statistic as:
+
+           T_obs = max |acf_k|,  k = 1, ..., max_lag
+
+    5. Approximate the null distribution of T_obs via Monte Carlo
+       simulation using i.i.d. Gaussian samples of equal length.
+
+    Null Hypothesis
+    ---------------
+        H0: PIT values are independent over time.
+
+    Alternative Hypothesis
+    ----------------------
+        H1: Serial dependence exists in PIT values.
+
+    The p-value is computed as the proportion of simulated statistics
+    exceeding the observed statistic.
+
+    Parameters
+    ----------
+    values : Iterable
+        Time series of returns or losses.
+    case : {"continuous", "discrete"}, default="continuous"
+        Specifies whether the underlying distribution is continuous
+        (parametric PIT) or discrete (randomized PIT).
+    distribution : {"normal", "t"}, default="normal"
+        Distribution assumed for parametric PIT.
+    df : Optional[int], default=None
+        Degrees of freedom for Student-t distribution.
+    window_type : {"rolling", "expanding"}, default="rolling"
+        Type of window used to compute PIT.
+    window : int, default=60
+        Rolling window size.
+    min_periods : int, default=60
+        Minimum observations for expanding window.
+    max_lag : int, default=5
+        Maximum lag considered in autocorrelation computation.
+    alpha : float, default=0.05
+        Significance level for rejection decision.
+    eps : float, default=1e-12
+        Numerical clipping level for PIT values.
+    n_sim : int, default=20000
+        Number of Monte Carlo simulations for null distribution.
+    seed : Optional[int], default=0
+        Random seed for reproducibility.
+    ddof : int, default=1
+        Delta degrees of freedom used in rolling/expanding volatility.
+
+    Returns
+    -------
+    IndependenceTestResult
+        Structured test result containing:
+            - test statistic
+            - p-value
+            - rejection decision
+            - diagnostic information
+
+    Notes
+    -----
+    - The test is simulation-based and computationally intensive.
+    - Results may be sensitive to `max_lag` and `n_sim`.
+    - Assumes correct PIT construction under the null.
+    """
+    values = pd.Series(values).astype(float)
+
+    if window_type == "rolling":
+        pit = rolling_pit(
+            values,
+            case=case,
+            distribution=distribution,
+            df=df,
+            window=window,
+            ddof=ddof,
+        )
+    else:
+        pit = expanding_pit(
+            values,
+            case=case,
+            distribution=distribution,
+            df=df,
+            min_periods=min_periods,
+            ddof=ddof,
+        )
+
+    if max_lag < 1:
+        raise ValueError("max_lag must be >= 1")
+
+    if n_sim < 1:
+        raise ValueError("n_sim must be >= 1")
+
+    u = pd.Series(pit).dropna().astype(float).to_numpy()
+
+    if u.size < 50:
+        raise ValueError("Sample too small for loss-quantile independence")
+
+    if not np.all(np.isfinite(u)):
+        raise ValueError("Non-finite PIT values")
+
+    u = np.clip(u, eps, 1.0 - eps)
+    z = norm.ppf(u)
+
+    if z.size <= max_lag + 1:
+        raise ValueError("Sample too small for requested max_lag")
+
+    # statsmodels returns acf for lags 0..max_lag; drop lag 0
+    acf_obs = acf(z, nlags=max_lag, fft=True)[1:]
+    t_obs = float(np.max(np.abs(acf_obs)))
+
+    rng = np.random.default_rng(seed)
+    n = z.size
+
+    t_sim = np.empty(n_sim, dtype=float)
+    for i in range(n_sim):
+        z0 = rng.standard_normal(n)
+        acf0 = acf(z0, nlags=max_lag, fft=True)[1:]
+        t_sim[i] = float(np.max(np.abs(acf0)))
+
+    pval = float(np.mean(t_sim >= t_obs))
+
+    return IndependenceTestResult(
+        test_name="Loss-Quantile Independence Test",
+        statistic=t_obs,
+        p_value=pval,
+        reject=bool(pval < alpha),
+        info={
+            "sample_size": int(n),
+            "alpha": float(alpha),
+            "max_lag": int(max_lag),
+            "n_sim": int(n_sim),
+            "acf": acf_obs,
+        },
+    )

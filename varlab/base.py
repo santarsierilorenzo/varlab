@@ -1,8 +1,9 @@
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, Literal
 from numpy.typing import NDArray
 from scipy.stats import norm, t
 import numpy as np
 
+Dist = Literal["normal", "t"]
 ArrayLike = Iterable[float]
 
 
@@ -34,9 +35,9 @@ def estimate_sigma(
     return float(sigma)
 
 
-def left_tail_quantile(
+def tail_quantile(
     gamma: float,
-    distribution: str,
+    distribution: Dist,
     df: Optional[int] = None,
 ) -> float:
     """

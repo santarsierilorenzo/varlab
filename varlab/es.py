@@ -1,13 +1,13 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Literal
 from scipy.stats import norm, t
 import numpy as np
 from .base import (
     estimate_sigma,
     weighted_sorted_dist,
-    left_tail_quantile,
     time_scaling,
 )
 
+Method = Literal["empirical", "parametric"]
 ArrayLike = Iterable[float]
 
 
@@ -15,7 +15,7 @@ def es(
     returns: ArrayLike,
     n_days: int = 1,
     confidence: float = 0.99,
-    method: str = "empirical",
+    method: Method = "empirical",
     weights: Optional[ArrayLike] = None,
     distribution: str = "normal",
     df: Optional[int] = None,
@@ -121,39 +121,3 @@ def _parametric_es(
     es_value = sigma * num / den
 
     return time_scaling(es_value, n_days)
-
-
-def _parametric_es(
-    losses: np.ndarray,
-    gamma: float,
-    n_days: int,
-    weights: Optional[ArrayLike],
-    distribution: str,
-    df: Optional[int],
-) -> float:
-    """
-    Parametric ES assuming zero-mean i.i.d. losses.
-    """
-    sigma = estimate_sigma(
-        returns=losses,
-        weights=weights,
-    )
-
-    if distribution == "normal":
-        q = norm.ppf(gamma)
-        es_value = sigma * norm.pdf(q) / (1.0 - gamma)
-
-    elif distribution == "t":
-        if df is None:
-            raise ValueError("df must be provided for t distribution.")
-        if df <= 1:
-            raise ValueError("df must be > 1 for ES.")
-
-        q = t.ppf(gamma, df=df)
-        
-
-    else:
-        raise ValueError(f"Unsupported distribution: {distribution}.")
-
-    return time_scaling(es_value, n_days)
-

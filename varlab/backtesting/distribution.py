@@ -7,9 +7,10 @@ Value-at-Risk (VaR) model validation.
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Literal, Dict, Any, Union
-from statsmodels.tsa.stattools import bds
+from typing import Optional, Literal, Dict, Any, Union
+from .pit import rolling_pit, expanding_pit
 from scipy.stats import norm, t, kstest, chi2
+from statsmodels.tsa.stattools import bds
 from dataclasses import dataclass
 import pandas as pd
 import numpy as np
@@ -28,140 +29,6 @@ class DistributionTestResult:
     p_value: Optional[Union[float, np.ndarray]]
     reject: Optional[bool]
     info: Dict[str, Any]
-
-
-def _pit_checks(
-    case: Literal["continuous", "discrete"],
-    distribution: Dist,
-    df: Optional[int],
-) -> None:
-    if case not in {"continuous", "discrete"}:
-        raise ValueError("case must be either 'continuous' or 'discrete'")
-
-    if distribution not in {"normal", "t"}:
-        raise ValueError("distribution must be 'normal' or 't'")
-
-    if distribution == "t":
-        if df is None or df <= 2:
-            raise ValueError("df must be provided and > 2 for t distribution")
-
-
-def _randomized_pit(
-    history: Iterable[float],
-    x: float,
-) -> float:
-    """
-    Randomized PIT for empirical discrete distribution.
-
-    U = F(x^-) + V * P(X = x),  V ~ Uniform(0,1)
-    """
-    hist = np.asarray(history, dtype=float)
-    hist = hist[~np.isnan(hist)]
-
-    n = hist.size
-    if n == 0:
-        raise ValueError("history must not be empty")
-
-    less = np.sum(hist < x)
-    equal = np.sum(hist == x)
-
-    v = np.random.uniform(0.0, 1.0)
-
-    return float((less + v * equal) / n)
-
-
-def _rolling_pit(
-    values: pd.Series,
-    case: Literal["continuous", "discrete"] = "continuous",
-    distribution: Dist = "normal",
-    df: Optional[int] = None,
-    window: int = 60,
-    ddof: int = 1,
-) -> pd.Series:
-    """
-    Rolling PIT consistent with mean-zero parametric VaR.
-
-    Assumes:
-        X_t = sigma_t * Z_t
-        Z_t ~ D(0,1)
-    """
-    _pit_checks(case, distribution, df)
-
-    if window < 1:
-        raise ValueError("window must be >= 1")
-
-    values = values.astype(float)
-
-    if case == "continuous":
-
-        sigma = values.rolling(window).std(ddof=ddof).shift(1)
-
-        pit = pd.Series(np.nan, index=values.index)
-
-        valid = (~sigma.isna()) & (sigma > 0)
-
-        if not valid.any():
-            return pit
-
-        z = values[valid] / sigma[valid]
-
-        if distribution == "normal":
-            pit[valid] = norm.cdf(z)
-        else:
-            pit[valid] = t.cdf(z, df=df)
-
-        return pit
-
-    # Discrete case
-    u = [np.nan] * len(values)
-
-    for t_idx in range(window, len(values)):
-        hist = values.iloc[t_idx - window:t_idx].values
-        x = values.iloc[t_idx]
-        u[t_idx] = _randomized_pit(hist, x)
-
-    return pd.Series(u, index=values.index)
-
-
-def _expanding_pit(
-    values: pd.Series,
-    case: Literal["continuous", "discrete"] = "continuous",
-    distribution: Dist = "normal",
-    df: Optional[int] = None,
-    min_periods: int = 30,
-    ddof: int = 1,
-) -> pd.Series:
-    """
-    Expanding-window PIT consistent with mean-zero parametric VaR.
-    """
-    _pit_checks(case, distribution, df)
-
-    if min_periods < 1:
-        raise ValueError("min_periods must be >= 1")
-
-    values = values.astype(float)
-    u = [np.nan] * len(values)
-
-    for t_idx in range(min_periods, len(values)):
-        hist = values.iloc[:t_idx]
-
-        if case == "continuous":
-            sigma = hist.std(ddof=ddof)
-
-            if sigma <= 0 or np.isnan(sigma):
-                continue
-
-            z = values.iloc[t_idx] / sigma
-
-            if distribution == "normal":
-                u[t_idx] = norm.cdf(z)
-            else:
-                u[t_idx] = t.cdf(z, df=df)
-
-        else:
-            u[t_idx] = _randomized_pit(hist.values, values.iloc[t_idx])
-
-    return pd.Series(u, index=values.index)
 
 
 def _kolmogorov_test(
@@ -281,7 +148,7 @@ def _berkowitz_test(
 
     # Restricted log-likelihood (H0: i.i.d. N(0,1))
     # l_res = sum log phi(z_t)
-    l_res = np.sum(norm.logpdf(z))
+    l_res = np.sum(norm.logpdf(z[1:]))
 
     # Unrestricted model: Gaussian AR(1)
     #
@@ -312,7 +179,7 @@ def _berkowitz_test(
     #
     # The "+1" term comes from substituting the MLE of sigma^2
     # into the Gaussian likelihood.
-    ll_unres = -((T - 1) / 2) * (
+    l_unres = -((T - 1) / 2) * (
         np.log(2 * np.pi)
         + np.log(sigma2_hat)
         + 1
@@ -324,7 +191,7 @@ def _berkowitz_test(
     #
     # Theoretically LR >= 0 (nested models), but small negative values
     # may arise from floating-point precision.
-    lr_stat = 2 * (ll_unres - l_res)
+    lr_stat = 2 * (l_unres - l_res)
     lr_stat = max(lr_stat, 0.0)
 
     # Survival function is numerically more stable than 1 - CDF
@@ -341,8 +208,8 @@ def _berkowitz_test(
             "c_hat": float(c_hat),
             "rho_hat": float(rho_hat),
             "sigma2_hat": float(sigma2_hat),
-            "ll_res": float(l_res),
-            "ll_unres": float(ll_unres),
+            "l_res": float(l_res),
+            "l_unres": float(l_unres),
             "df": 3,
         },
     )
@@ -365,7 +232,7 @@ def pit_diagnostics(
     Run PIT diagnostics: marginal uniformity and independence.
     """
     if window_type == "rolling":
-        pit = _rolling_pit(
+        pit = rolling_pit(
             values,
             case=case,
             distribution=distribution,
@@ -374,7 +241,7 @@ def pit_diagnostics(
             ddof=ddof,
         )
     else:
-        pit = _expanding_pit(
+        pit = expanding_pit(
             values,
             case=case,
             distribution=distribution,
