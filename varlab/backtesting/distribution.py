@@ -227,6 +227,7 @@ def pit_diagnostics(
     max_dim: int = 4,
     alpha: float = 0.05,
     eps: float = 1e-12,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> Dict[str, DistributionTestResult]:
     """
     Run PIT diagnostics: marginal uniformity and independence.
@@ -239,6 +240,7 @@ def pit_diagnostics(
             df=df,
             window=window,
             ddof=ddof,
+            mean=mean,
         )
     else:
         pit = expanding_pit(
@@ -248,6 +250,7 @@ def pit_diagnostics(
             df=df,
             min_periods=min_periods,
             ddof=ddof,
+            mean=mean,
         )
 
     pit = pit.dropna()
