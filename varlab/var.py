@@ -9,6 +9,7 @@ from .base import (
 
 ArrayLike = Iterable[float]
 Method = Literal["empirical", "parametric"]
+Dist = Literal["normal", "t"]
 
 def var(
     returns: ArrayLike,
@@ -32,8 +33,42 @@ def var(
 
     - If `returns` represent PnL values, the VaR is expressed in monetary units
     - If `returns` represent simple returns, the VaR is expressed in percentage
-    terms (assuming unit notional).
+      terms (assuming unit notional).
+
+    Implementation details:
+    - For the unweighted empirical method, the quantile is computed with
+      `method="higher"` to match the formal VaR definition based on the
+      infimum of the set where the CDF exceeds `confidence` (i.e. the
+      conservative choice when the quantile falls between observations).
+
+    Parameters
+    ----------
+    returns : ArrayLike
+        Return/PnL observations. If 2D (T, N), interpreted as asset returns.
+    n_days : int, default=1
+        Forecast horizon in days. Must be positive.
+    confidence : float, default=0.99
+        Confidence level in (0, 1).
+    method : {"empirical", "parametric"}, default="empirical"
+        Estimation method.
+    weights : Optional[ArrayLike], default=None
+        Portfolio weights. Used for 2D inputs in the parametric method.
+    distribution : str, default="normal"
+        Parametric distribution: "normal" or "t".
+    df : Optional[int], default=None
+        Degrees of freedom for Student-t. Required if `distribution="t"`.
+    lamb : Optional[float], default=None
+        Exponential decay parameter for weighted empirical VaR. If provided,
+        must be in (0, 1). If None, equal weights are used.
+
+    Returns
+    -------
+    float
+        VaR as a positive number (loss magnitude).
     """
+    if distribution not in {"normal", "t"}:
+        raise ValueError("distribution must be 'normal' or 't'")
+    
     losses = -np.asarray(returns, dtype=float)
 
     if not 0.0 < confidence < 1.0:
