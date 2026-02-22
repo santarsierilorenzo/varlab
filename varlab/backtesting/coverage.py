@@ -8,6 +8,7 @@ This module implements statistically rigorous tests used in Value-at-Risk
 from __future__ import annotations
 
 from typing import Optional, Sequence, Dict, Any
+from .independence import christoffersen_test
 from scipy.stats import binom, chi2
 from dataclasses import dataclass
 import numpy as np
@@ -61,7 +62,10 @@ def _validate_exceedances(
     return arr
 
 
-def _validate_probability(value: float, name: str) -> None:
+def _validate_probability(
+    value: float,
+    name: str
+) -> None:
     """Validate probability in (0, 1)."""
     if not 0.0 < value < 1.0:
         raise ValueError(f"{name} must be in (0, 1).")
@@ -281,5 +285,70 @@ def basel_traffic_light_test(
             "violations": violations,
             "zone": zone,
             "multiplier": multiplier,
+        },
+    )
+
+
+def christoffersen_conditional_coverage_test(
+    exceedances: Sequence[int],
+    confidence_level: float,
+    alpha: Optional[float] = None,
+) -> CoverageTestResult:
+    """
+    Christoffersen (1998) Conditional Coverage Test.
+
+    This test jointly evaluates:
+
+        1. Unconditional coverage (Kupiec POF test)
+        2. Independence of exceedances (Markov test)
+
+    The test statistic is:
+
+        LR_cc = LR_uc + LR_ind
+
+    Under the null hypothesis:
+
+        H0: Correct violation frequency AND independence
+
+    The statistic is asymptotically chi-square with 2 degrees of freedom.
+    """
+
+    # Unconditional coverage (Kupiec)
+    kupiec_res = kupiec_pof_test(
+        exceedances,
+        confidence_level,
+        alpha=None,
+    )
+
+    lr_uc = kupiec_res.statistic
+
+    # Independence component
+    ind_res = christoffersen_test(
+        exceedances,
+        alpha=0.05,  # not used for decision here
+    )
+
+    lr_ind = ind_res.statistic
+
+    # Joint statistic
+    lr_cc = lr_uc + lr_ind
+
+    p_value = chi2.sf(lr_cc, df=2)
+
+    reject: Optional[bool] = None
+    if alpha is not None:
+        reject = p_value < alpha
+
+    return CoverageTestResult(
+        test_name="Christoffersen Conditional Coverage",
+        statistic=float(lr_cc),
+        p_value=float(p_value),
+        reject=reject,
+        info={
+            "sample_size": kupiec_res.info["sample_size"],
+            "confidence_level": confidence_level,
+            "lr_uc": float(lr_uc),
+            "lr_ind": float(lr_ind),
+            "df": 2,
         },
     )
