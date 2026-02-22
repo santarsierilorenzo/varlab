@@ -192,7 +192,7 @@ def kupiec_pof_test(
         )
 
     lr_stat: float = -2.0 * (log_num - log_den)
-    p_value: float = 1.0 - chi2.cdf(lr_stat, df=1)
+    p_value: float = chi2.sf(lr_stat, df=1)
 
     reject: Optional[bool] = None
     if alpha is not None:
