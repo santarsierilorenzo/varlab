@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Literal, Dict, Any, Union
 from statsmodels.tsa.stattools import bds
-from scipy.stats import norm, t, kstest
+from scipy.stats import norm, t, kstest, chi2
 from dataclasses import dataclass
 import pandas as pd
 import numpy as np
@@ -236,6 +236,83 @@ def _independence_test(
     )
 
 
+def _berkowitz_test(
+    pit: pd.Series,
+    alpha: float = 0.05,
+    eps: float = 1e-12,
+) -> DistributionTestResult:
+    """
+    Berkowitz (2001) likelihood ratio test for density forecasts.
+
+    Procedure:
+        1. Apply probit transform: z_t = Phi^{-1}(u_t)
+        2. Estimate Gaussian AR(1) model:
+               z_t = c + rho * z_{t-1} + e_t
+        3. LR test against:
+               z_t ~ iid N(0,1)
+
+    H0: c = 0, rho = 0, sigma^2 = 1
+    """
+    u = pd.Series(pit).dropna().astype(float)
+
+    if len(u) < 50:
+        raise ValueError("Sample too small for Berkowitz test")
+
+    if (u <= 0).any() or (u >= 1).any():
+        # clipping required for probit
+        u = np.clip(u.values, eps, 1.0 - eps)
+    else:
+        u = u.values
+
+    # Probit transform
+    z = norm.ppf(u)
+
+    # Restricted log-likelihood: iid N(0,1)
+    ll_res = np.sum(norm.logpdf(z, loc=0.0, scale=1.0))
+
+    # Unrestricted: Gaussian AR(1)
+    # z_t = c + rho z_{t-1} + e_t
+    y = z[1:]
+    x = np.column_stack([np.ones(len(y)), z[:-1]])
+
+    beta, _, _, _ = np.linalg.lstsq(x, y, rcond=None)
+    resid = y - x @ beta
+
+    sigma2 = np.mean(resid ** 2)
+
+    if sigma2 <= 0 or not np.isfinite(sigma2):
+        raise ValueError("Invalid sigma^2 estimate in Berkowitz test")
+
+    ll_unres = -0.5 * len(y) * (
+        np.log(2.0 * np.pi)
+        + np.log(sigma2)
+        + 1.0
+    )
+
+    # Likelihood ratio
+    lr_stat = 2.0 * (ll_unres - ll_res)
+    lr_stat = float(max(lr_stat, 0.0))
+
+    pval = float(chi2.sf(lr_stat, df=3))
+
+    return DistributionTestResult(
+        test_name="Berkowitz LR Test",
+        statistic=lr_stat,
+        p_value=pval,
+        reject=bool(pval < alpha),
+        info={
+            "sample_size": int(len(u)),
+            "alpha": alpha,
+            "c_hat": float(beta[0]),
+            "rho_hat": float(beta[1]),
+            "sigma2_hat": float(sigma2),
+            "ll_res": float(ll_res),
+            "ll_unres": float(ll_unres),
+            "df": 3,
+        },
+    )
+
+
 def pit_diagnostics(
     values: pd.Series,
     case: Literal["continuous", "discrete"] = "continuous",
@@ -247,6 +324,7 @@ def pit_diagnostics(
     ddof: int = 1,
     max_dim: int = 4,
     alpha: float = 0.05,
+    eps: float = 1e-12,
 ) -> Dict[str, DistributionTestResult]:
     """
     Run PIT diagnostics: marginal uniformity and independence.
@@ -273,13 +351,11 @@ def pit_diagnostics(
     pit = pit.dropna()
 
     ks_res = _kolmogorov_test(pit, alpha=alpha)
-    bds_res = _independence_test(
-        pit,
-        max_dim=max_dim,
-        alpha=alpha,
-    )
+    bds_res = _independence_test(pit, max_dim=max_dim, alpha=alpha)
+    berkowitz_res = _berkowitz_test(pit, alpha=alpha, eps=eps)
 
     return {
         "uniformity": ks_res,
         "independence": bds_res,
+        "berkowitz": berkowitz_res,
     }
