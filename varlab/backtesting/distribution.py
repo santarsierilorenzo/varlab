@@ -291,8 +291,11 @@ def _berkowitz_test(
 
     # Likelihood ratio
     lr_stat = 2.0 * (ll_unres - ll_res)
+
+    # ll_unres >= ll_res, so lr_stat > 0
     lr_stat = float(max(lr_stat, 0.0))
 
+    # sf(x) = 1 - cdf(x)
     pval = float(chi2.sf(lr_stat, df=3))
 
     return DistributionTestResult(
