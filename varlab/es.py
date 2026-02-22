@@ -93,31 +93,58 @@ def _parametric_es(
     weights: Optional[ArrayLike],
     distribution: str,
     df: Optional[int],
+    mean: Literal["zero", "sample"] = "zero",
 ) -> float:
     """
-    Parametric ES assuming zero-mean i.i.d. returns.
+    Parametric Expected Shortfall under i.i.d. assumption.
+
+    Assumes:
+
+        L_t = mu + sigma * Z_t
+
+    where Z_t follows a standardized distribution (normal or Student-t).
+
+    Multi-day ES is computed as:
+
+        ES_N = N * mu + sqrt(N) * ES_1_centered
     """
     sigma = estimate_sigma(
         returns=losses,
         weights=weights,
     )
 
+    mu = np.mean(losses) if mean == "sample" else 0.0
+
     if distribution == "normal":
-        q = norm.ppf(gamma)
-        num = np.e**(-q**2 / 2)
-        den = (np.sqrt(2 * np.pi) * (1-gamma))
+        z = norm.ppf(gamma)
+        es_std = norm.pdf(z) / (1.0 - gamma)
 
     elif distribution == "t":
         if df is None:
-            raise ValueError("df must be provided for t distribution.")
+            raise ValueError(
+                "df must be provided for Student-t distribution."
+            )
+
         q = t.ppf(gamma, df=df)
 
-        num = t.pdf(q, df=df) * (df + q ** 2)
-        den = (df - 1) * (1.0 - gamma)
-        
+        # ES for standard Student-t
+        es_std = (
+            t.pdf(q, df=df)
+            * (df + q**2)
+            / ((df - 1) * (1.0 - gamma))
+        )
+
+        # Standardize Student-t to unit variance
+        es_std *= np.sqrt((df - 2) / df)
+
     else:
-        raise ValueError(f"Unsupported distribution: {distribution}.")
+        raise ValueError(
+            f"Unsupported distribution: {distribution}."
+        )
 
-    es_value = sigma * num / den
+    es_value = mu * n_days + time_scaling(
+        sigma * es_std,
+        n_days,
+    )
 
-    return time_scaling(es_value, n_days)
+    return float(es_value)

@@ -95,21 +95,50 @@ def _parametric_var(
     n_days: int,
     distribution: str,
     df: Optional[int],
-    weights: Optional[ArrayLike] = None,
+    weights: Optional[Iterable[float]] = None,
+    mean: Literal["zero", "sample"] = "zero",
 ) -> float:
     """
-    Parametric VaR assuming zero-mean i.i.d. returns.
+    Parametric Value-at-Risk under i.i.d. assumption.
+
+    The model assumes:
+
+        L_t = mu + sigma * Z_t
+
+    where Z_t follows a standardized distribution (normal or Student-t).
+
+    If mean="zero", mu is assumed equal to 0.
+    If mean="sample", mu is estimated from the sample.
+
+    Multi-day VaR is computed as:
+
+        VaR_N = N * mu + sqrt(N) sgima *  z_gamma
+
+    where z_gamma is the gamma-quantile of the standardized distribution.
     """
     sigma = estimate_sigma(
         returns=losses,
         weights=weights,
     )
 
-    q = tail_quantile(
+    mu = np.mean(losses) if mean == "sample" else 0.0
+
+    z = tail_quantile(
         gamma=gamma,
         distribution=distribution,
         df=df,
     )
-    # TODO: add mean estimate instead of assuming mean 0
-    var_value = q * sigma
-    return time_scaling(var_value, n_days)
+
+    if distribution == "t":
+        if df is None:
+            raise ValueError(
+                "df must be provided for Student-t distribution."
+            )
+        # Standardize Student-t so that Var(Z) = 1.
+        # The standard t has variance df / (df - 2),
+        # so we rescale the quantile accordingly.
+        z *= np.sqrt((df - 2) / df)
+
+    var_value = mu * n_days + time_scaling(z * sigma, n_days)
+
+    return float(var_value)
