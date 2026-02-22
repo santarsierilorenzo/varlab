@@ -236,80 +236,115 @@ def _independence_test(
     )
 
 
+from scipy.stats import norm, chi2
+
+
 def _berkowitz_test(
     pit: pd.Series,
     alpha: float = 0.05,
     eps: float = 1e-12,
 ) -> DistributionTestResult:
     """
-    Berkowitz (2001) likelihood ratio test for density forecasts.
+    Berkowitz (2001) likelihood ratio test for conditional density forecasts.
 
-    Procedure:
-        1. Apply probit transform: z_t = Phi^{-1}(u_t)
-        2. Estimate Gaussian AR(1) model:
-               z_t = c + rho * z_{t-1} + e_t
-        3. LR test against:
-               z_t ~ iid N(0,1)
+    The test proceeds as follows:
 
-    H0: c = 0, rho = 0, sigma^2 = 1
+        1. Apply the probit transform:
+               z_t = Phi^{-1}(u_t)
+
+        2. Estimate the Gaussian AR(1) model:
+               z_t = c + rho z_{t-1} + epsilon_t,
+               epsilon_t ~ N(0, sigma^2)
+
+        3. Perform a likelihood ratio (LR) test against the restricted model:
+               z_t ~ i.i.d. N(0,1)
+
+    Null hypothesis:
+        H0: c = 0, rho = 0, sigma^2 = 1
+
+    Under H0, the LR statistic is asymptotically chi-square with 3 degrees
+    of freedom.
     """
+    # Prepare PIT series
     u = pd.Series(pit).dropna().astype(float)
 
     if len(u) < 50:
         raise ValueError("Sample too small for Berkowitz test")
 
+    # Probit transform requires values strictly inside (0,1).
+    # We clip to avoid infinite values in norm.ppf.
     if (u <= 0).any() or (u >= 1).any():
-        # clipping required for probit
-        u = np.clip(u.values, eps, 1.0 - eps)
+        u = np.clip(u.values, eps, 1 - eps)
     else:
         u = u.values
 
-    # Probit transform
+    # Step 1: Probit transform
+    # Under H0: z_t ~ i.i.d. N(0,1)
     z = norm.ppf(u)
 
-    # Restricted log-likelihood: iid N(0,1)
-    ll_res = np.sum(norm.logpdf(z, loc=0.0, scale=1.0))
+    # Restricted log-likelihood (H0: i.i.d. N(0,1))
+    # l_res = sum log phi(z_t)
+    l_res = np.sum(norm.logpdf(z))
 
-    # Unrestricted: Gaussian AR(1)
-    # z_t = c + rho z_{t-1} + e_t
+    # Unrestricted model: Gaussian AR(1)
+    #
+    # Since the model is linear and Gaussian:
+    #   - The MLE of (c, rho) coincides with OLS estimates.
+    #   - The MLE of sigma^2 is the mean of squared residuals
+    #     (i.e., SSR / (T-1)).
+    #
+    # We use the conditional likelihood (conditioning on z_1).
     y = z[1:]
-    x = np.column_stack([np.ones(len(y)), z[:-1]])
+    X = np.column_stack([np.ones(len(y)), z[:-1]])
 
-    beta, _, _, _ = np.linalg.lstsq(x, y, rcond=None)
-    resid = y - x @ beta
+    beta_hat, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
 
-    sigma2 = np.mean(resid ** 2)
+    c_hat = beta_hat[0]
+    rho_hat = beta_hat[1]
 
-    if sigma2 <= 0 or not np.isfinite(sigma2):
-        raise ValueError("Invalid sigma^2 estimate in Berkowitz test")
+    resid = y - X @ beta_hat
 
-    ll_unres = -0.5 * len(y) * (
-        np.log(2.0 * np.pi)
-        + np.log(sigma2)
-        + 1.0
+    # MLE of variance (NOT the unbiased estimator)
+    sigma2_hat = np.mean(resid ** 2)
+
+    T = len(z)
+
+    # Unrestricted log-likelihood (conditional)
+    #
+    # l_unres = -(T-1)/2 * [ log(2π) + log(sigma^2_hat) + 1 ]
+    #
+    # The "+1" term comes from substituting the MLE of sigma^2
+    # into the Gaussian likelihood.
+    ll_unres = -((T - 1) / 2) * (
+        np.log(2 * np.pi)
+        + np.log(sigma2_hat)
+        + 1
     )
 
-    # Likelihood ratio
-    lr_stat = 2.0 * (ll_unres - ll_res)
+    # Likelihood ratio statistic
+    #
+    # LR = 2 (l_unres - l_res)
+    #
+    # Theoretically LR >= 0 (nested models), but small negative values
+    # may arise from floating-point precision.
+    lr_stat = 2 * (ll_unres - l_res)
+    lr_stat = max(lr_stat, 0.0)
 
-    # ll_unres >= ll_res, so lr_stat > 0
-    lr_stat = float(max(lr_stat, 0.0))
-
-    # sf(x) = 1 - cdf(x)
-    pval = float(chi2.sf(lr_stat, df=3))
+    # Survival function is numerically more stable than 1 - CDF
+    pval = chi2.sf(lr_stat, df=3)
 
     return DistributionTestResult(
         test_name="Berkowitz LR Test",
-        statistic=lr_stat,
-        p_value=pval,
+        statistic=float(lr_stat),
+        p_value=float(pval),
         reject=bool(pval < alpha),
         info={
-            "sample_size": int(len(u)),
+            "sample_size": int(len(z)),
             "alpha": alpha,
-            "c_hat": float(beta[0]),
-            "rho_hat": float(beta[1]),
-            "sigma2_hat": float(sigma2),
-            "ll_res": float(ll_res),
+            "c_hat": float(c_hat),
+            "rho_hat": float(rho_hat),
+            "sigma2_hat": float(sigma2_hat),
+            "ll_res": float(l_res),
             "ll_unres": float(ll_unres),
             "df": 3,
         },
