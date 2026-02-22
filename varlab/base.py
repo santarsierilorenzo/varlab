@@ -100,8 +100,6 @@ def weighted_sorted_dist(
         / (1.0 - lamb ** n)
     )
 
-    order: NDArray[np.int64] = np.argsort(returns)
-
     order = np.argsort(returns)
 
     sorted_returns = returns[order]

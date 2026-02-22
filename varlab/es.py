@@ -73,14 +73,17 @@ def _empirical_es(
             lamb,
         )
 
-        tail_mask = cum_w >= gamma
+        idx = int(np.searchsorted(cum_w, gamma, side="right"))
+        idx = min(idx, len(sorted_pnl) - 1)
 
-        if not np.any(tail_mask):
+        tail_pnl = sorted_pnl[idx:]
+        tail_w = sorted_w[idx:]
+
+        if tail_w.size == 0:
             raise RuntimeError("Empty ES tail.")
 
         es_value = float(
-            np.sum(sorted_pnl[tail_mask] * sorted_w[tail_mask])
-            / np.sum(sorted_w[tail_mask])
+            np.sum(tail_pnl * tail_w) / np.sum(tail_w)
         )
 
     return time_scaling(es_value, n_days)
