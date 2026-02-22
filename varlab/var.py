@@ -83,6 +83,7 @@ def _empirical_var(
     else:
         sorted_pnl, _, cum_w = weighted_sorted_dist(losses, lamb)
         idx = int(np.searchsorted(cum_w, gamma, side="right"))
+        idx = min(idx, len(sorted_pnl) - 1)
         var_value = float(sorted_pnl[idx])
 
     return time_scaling(var_value, n_days)
