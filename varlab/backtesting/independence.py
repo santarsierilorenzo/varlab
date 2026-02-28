@@ -184,7 +184,7 @@ def loss_quantile_independence_test(
     max_lag: int = 5,
     alpha: float = 0.05,
     eps: float = 1e-12,
-    n_sim: int = 20_000,
+    n_sim: int = 5_000,
     seed: Optional[int] = 0,
     ddof: int = 1,
     mean: Literal["zero", "sample"] = "zero",
