@@ -54,6 +54,7 @@ def mcneil_frey_test(
         raise ValueError("No VaR exceedances found.")
 
     excess_losses: np.ndarray = losses[exceed_mask] - es
+    tail_mean = np.mean(losses[exceed_mask])
 
     if excess_losses.size < 2:
         raise ValueError(
@@ -79,5 +80,6 @@ def mcneil_frey_test(
             "sample_size": int(losses.size),
             "observed_violations": int(excess_losses.size),
             "alternative": alternative,
+            "tail_mean": float(tail_mean)
         },
     )
