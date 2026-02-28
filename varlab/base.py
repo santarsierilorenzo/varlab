@@ -1,8 +1,10 @@
-from typing import Iterable, Optional, Tuple, Literal
+from typing import Iterable, Optional, Tuple, Literal, Union
 from numpy.typing import NDArray
 from scipy.stats import norm, t
+import pandas as pd
 import numpy as np
 
+Rounding = Literal["floor", "ceil", "round", "stochastic"]
 Dist = Literal["normal", "t"]
 ArrayLike = Iterable[float]
 
@@ -123,3 +125,72 @@ def _portfolio_volatility(
     variance = weights.T @ cov @ weights
 
     return float(np.sqrt(variance))
+
+
+def factor_rounding(
+    scaling_factor: Union[float, Iterable[float], pd.Series],
+    mode: Rounding,
+    seed: int | None = None,
+) -> Union[float, np.ndarray, pd.Series]:
+    """
+    Apply a rounding rule to a scaling factor.
+
+    Parameters
+    ----------
+    scaling_factor : float, Iterable[float], or pd.Series
+        Scalar or array-like of scaling factors to be rounded.
+        If a pandas Series is provided, the index is preserved.
+    mode : {"floor", "ceil", "round", "stochastic"}
+        Rounding method.
+    seed : int, optional
+        Seed used for stochastic rounding. If None, randomness
+        is not deterministic.
+
+    Returns
+    -------
+    float, np.ndarray, or pd.Series
+        Rounded value(s). Returns a float if input is scalar.
+        Returns a NumPy array for generic iterables.
+        Returns a pandas Series if input is a Series.
+    """
+    is_scalar = np.isscalar(scaling_factor)
+    is_series = isinstance(scaling_factor, pd.Series)
+
+    if is_scalar:
+        sf = np.array([scaling_factor], dtype=float)
+
+    elif is_series:
+        sf = scaling_factor.to_numpy(dtype=float)
+
+    else:
+        sf = np.asarray(scaling_factor, dtype=float)
+
+    sf = np.nan_to_num(sf, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if mode == "floor":
+        result = np.floor(sf)
+
+    elif mode == "ceil":
+        result = np.ceil(sf)
+
+    elif mode == "round":
+        result = np.round(sf)
+
+    elif mode == "stochastic":
+        rng = np.random.default_rng(seed)
+
+        n = np.floor(sf).astype(int)
+        delta = sf - n
+        u = rng.uniform(0.0, 1.0, size=sf.shape)
+        result = np.where(u < delta, n + 1, n)
+
+    else:
+        raise ValueError(f"{mode} is not an available rounding mode")
+
+    if is_scalar:
+        return float(result[0])
+
+    if is_series:
+        return pd.Series(result, index=scaling_factor.index)
+
+    return result
