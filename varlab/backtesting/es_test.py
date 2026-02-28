@@ -26,12 +26,48 @@ def mcneil_frey_test(
     """
     Perform McNeil-Frey (2000) Expected Shortfall backtest.
 
-    H0: E[L - ES | L > VaR] = 0
+    Null hypothesis
+    ---------------
+    H0: E[L_t - ES | L_t > VaR_t] = 0
+
+    The test evaluates whether the Expected Shortfall forecast
+    systematically underestimates or overestimates realized losses
+    beyond the VaR threshold.
+
+    IMPORTANT
+    ---------
+    VaR must be an out-of-sample forecast:
+
+        VaR_t = VaR_{t | F_{t-1}}
+
+    It must be computed using only information available at time t-1.
+    Using in-sample estimates invalidates the statistical interpretation
+    of the test.
+
+    The ES input can be either:
+
+    - A constant value (e.g. regulatory or target ES), or
+    - An out-of-sample forecast ES_t consistent with VaR_t.
+
+    If ES is dynamic, it must also satisfy:
+
+        ES_t = ES_{t | F_{t-1}}
 
     Parameters
     ----------
+    returns : np.ndarray
+        Realized returns.
+    var : np.ndarray | float
+        Forecasted VaR in loss space.
+    es : float
+        Constant Expected Shortfall forecast in loss space.
+    alpha : Optional[float]
+        Significance level for rejection decision.
     alternative : {"greater", "less", "two-sided"}
-        Type of alternative hypothesis.
+        Type of alternative hypothesis:
+            "greater" -> ES underestimation test (standard case)
+            "less" -> ES overestimation test
+            "two-sided" -> any systematic bias
     """
     if alternative not in {"greater", "less", "two-sided"}:
         raise ValueError(
