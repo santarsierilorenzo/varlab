@@ -70,7 +70,7 @@ def time_scaling(
     """
     if n_days <= 0:
         raise ValueError("n_days must be positive.")
-    return value * np.sqrt(n_days)
+    return float(value * np.sqrt(n_days))
 
 
 def weighted_sorted_dist(
