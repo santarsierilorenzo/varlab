@@ -171,6 +171,10 @@ def _parametric_var(
             raise ValueError(
                 "df must be provided for Student-t distribution."
             )
+        
+        if df <= 2:
+            raise ValueError("df must be > 2 for finite variance.")
+
         # Standardize Student-t so that Var(Z) = 1.
         # The standard t has variance df / (df - 2),
         # so we rescale the quantile accordingly.

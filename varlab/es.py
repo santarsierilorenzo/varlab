@@ -171,6 +171,9 @@ def _parametric_es(
             raise ValueError(
                 "df must be provided for Student-t distribution."
             )
+        
+        if df <= 2:
+            raise ValueError("df must be > 2 for finite variance.")
 
         q = t.ppf(gamma, df=df)
 
