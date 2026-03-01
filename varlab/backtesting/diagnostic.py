@@ -7,9 +7,8 @@ JSON-serializable output format.
 """
 
 from typing import Any, Dict, Iterable, Literal, Sequence
+from . import coverage, distribution, independence
 import numpy as np
-
-from .backtesting import coverage, distribution, independence
 
 
 WindowType = Literal["rolling", "expanding"]
