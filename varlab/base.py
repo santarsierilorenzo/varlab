@@ -43,7 +43,7 @@ def tail_quantile(
     df: Optional[int] = None,
 ) -> float:
     """
-    Return left-tail quantile for the selected distribution.
+    Return tail quantile for the selected distribution.
     """
     if not 0.0 < gamma < 1.0:
         raise ValueError("gamma must be in (0, 1).")
