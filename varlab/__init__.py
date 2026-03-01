@@ -21,6 +21,7 @@ from .window import (
 )
 
 from . import backtesting
+from . import diagnostic
 
 __all__ = [
     "var",
@@ -30,4 +31,5 @@ __all__ = [
     "expanding_var",
     "expanding_es",
     "backtesting",
+    "diagnostic"
 ]
