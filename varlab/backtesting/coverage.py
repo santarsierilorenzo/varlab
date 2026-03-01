@@ -17,7 +17,7 @@ import numpy as np
 @dataclass(frozen=True)
 class CoverageTestResult:
     """
-    Standardized result container for coverage tests.
+    Standardized result container for tests.
 
     Attributes
     ----------

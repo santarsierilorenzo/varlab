@@ -22,7 +22,7 @@ Dist = Literal["normal", "t"]
 @dataclass(frozen=True)
 class IndependenceTestResult:
     """
-    Standardized result container for distribution tests.
+    Standardized result container for tests.
     """
     test_name: str
     statistic: Optional[Union[float, np.ndarray]]
