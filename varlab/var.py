@@ -115,9 +115,8 @@ def _empirical_var(
         # the set of losses where the cumulative distribution exceeds gamma.
         # In practical terms: always choose the greater value when estimating
         # the quantile =^.^=
-        q = np.quantile(losses, gamma, method="higher")
-        var_value = q
-
+        var_value = np.quantile(losses, gamma, method="higher")
+        
     else:
         sorted_pnl, _, cum_w = weighted_sorted_dist(losses, lamb)
         idx = int(np.searchsorted(cum_w, gamma, side="right"))
@@ -150,7 +149,7 @@ def _parametric_var(
 
     Multi-day VaR is computed as:
 
-        VaR_N = N * mu + sqrt(N) sgima *  z_gamma
+        VaR_N = N * mu + sqrt(N) * sigma *  z_gamma
 
     where z_gamma is the gamma-quantile of the standardized distribution.
     """
@@ -159,7 +158,7 @@ def _parametric_var(
         weights=weights,
     )
 
-    mu = np.mean(losses) if mean == "sample" else 0.0
+    mu = np.mean(losses) if mean == "sample" else 0
 
     z = tail_quantile(
         gamma=gamma,
