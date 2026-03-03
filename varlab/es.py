@@ -75,14 +75,6 @@ def es(
     if not 0.0 < confidence < 1.0:
         raise ValueError("confidence must be in (0, 1).")
 
-    if method == "empirical":
-        return _empirical_es(
-            losses=losses,
-            gamma=confidence,
-            n_days=n_days,
-            lamb=lamb,
-        )
-
     if method == "parametric":
         return _parametric_es(
             losses=losses,
@@ -92,6 +84,14 @@ def es(
             distribution=distribution,
             df=df,
             mean=mean,
+        )
+    
+    if method == "empirical":
+        return _empirical_es(
+            losses=losses,
+            gamma=confidence,
+            n_days=n_days,
+            lamb=lamb,
         )
 
     raise ValueError(f"Unsupported ES method: {method}.")
