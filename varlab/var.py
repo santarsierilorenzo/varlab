@@ -4,8 +4,7 @@ from .base import (
     estimate_sigma,
     weighted_sorted_dist,
     tail_quantile,
-    time_scaling,
-    estimate_mean
+    time_scaling
 )
 
 ArrayLike = Iterable[float]
