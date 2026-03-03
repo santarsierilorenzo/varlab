@@ -160,7 +160,14 @@ def _parametric_es(
         weights=weights,
     )
 
-    mu = np.mean(losses) if mean == "sample" else 0.0
+    if mean == "sample":
+        if weights is None:
+            mu = np.mean(losses)
+        else:
+            weights_arr = np.asarray(weights, dtype=float)
+            mu = np.sum(weights_arr * losses, axis=1)
+    else:
+        mu = 0
 
     if distribution == "normal":
         z = norm.ppf(gamma)
