@@ -82,8 +82,8 @@ def weighted_sorted_dist(
     NDArray[np.floating],
 ]:
     """
-    Build a weighted, sorted returns distribution using
-    Hull-style exponential decay.
+    Build a weighted, sorted returns distribution using Hull-style exponential
+    decay.
     """
     if returns.ndim != 1:
         raise ValueError("returns must be a 1D array.")
