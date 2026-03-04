@@ -151,6 +151,7 @@ def exact_binomial_coverage_test(
         test_name="Exact Binomial Coverage",
         statistic=x,
         p_value=float(p_value),
+        reject=reject,
         info={
             "outcome": outcome,
             "sample_size": t,
@@ -164,14 +165,14 @@ def exact_binomial_coverage_test(
 def kupiec_pof_test(
     exceedances: Sequence[int],
     confidence: float,
-    alpha: Optional[float] = None,
+    alpha: float = 0.05,
 ) -> CoverageTestResult:
     """
     Kupiec (1995) likelihood ratio coverage test.
 
     LR_POF = -2 log [ L(q) / L(q_hat) ]
 
-    Under H0:
+    Under H0 and for large samples:
 
         LR_POF ~ chi-square(1)
 
@@ -181,7 +182,7 @@ def kupiec_pof_test(
         Binary exceedance indicators.
     confidence : float
         VaR confidence level.
-    alpha : Optional[float]
+    alpha : float
         Significance level.
 
     Returns
@@ -190,9 +191,7 @@ def kupiec_pof_test(
     """
     arr = _validate_exceedances(exceedances)
     _validate_probability(confidence, "confidence")
-
-    if alpha is not None:
-        _validate_probability(alpha, "alpha")
+    _validate_probability(alpha, "alpha")
 
     t: int = len(arr)
     x: int = int(np.sum(arr))
@@ -209,20 +208,19 @@ def kupiec_pof_test(
         log_den = 0.0
     else:
         log_num = (
-            (t - x) * np.log(1.0 - q) +
-            x * np.log(q)
+            (t - x) * np.log(1.0 - q)
+            + x * np.log(q)
         )
         log_den = (
-            (t - x) * np.log(1.0 - q_hat) +
-            x * np.log(q_hat)
+            (t - x) * np.log(1.0 - q_hat)
+            + x * np.log(q_hat)
         )
 
     lr_stat: float = -2.0 * (log_num - log_den)
     p_value: float = chi2.sf(lr_stat, df=1)
+    reject = p_value < alpha
 
-    reject: Optional[bool] = None
-    if alpha is not None:
-        reject = p_value < alpha
+    outcome = "Fail" if reject else "Pass"
 
     return CoverageTestResult(
         test_name="Kupiec POF",
@@ -230,6 +228,7 @@ def kupiec_pof_test(
         p_value=float(p_value),
         reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": t,
             "observed_violations": x,
             "expected_violations": t * q,
