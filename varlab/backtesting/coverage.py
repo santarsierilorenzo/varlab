@@ -111,6 +111,34 @@ def exact_binomial_coverage_test(
     x: int = int(np.sum(arr))
     q: float = 1.0 - confidence
 
+    # The exact binomial coverage test can be performed either using rejection
+    # regions or using a p-value formulation. The two approaches are equivalent
+    #
+    # In the rejection-region formulation we define two critical values x_1 and
+    # x_2 such that
+    #
+    #     P(X <= x_1) <= alpha/2
+    #     P(X >= x_2) <= alpha/2
+    #
+    # and we reject H0 if the observed number of exceedances x lies outside
+    # the interval [x_1, x_2].
+    #
+    # In the p-value formulation we compute
+    #
+    #     p = 2 * min(P(X <= x), P(X >= x))
+    #
+    # and reject when p < alpha. This is equivalent to the rejection-region
+    # formulation.
+    #
+    # The right tail probability P(X >= x) is computed as
+    #
+    #     P(X >= x) = 1 - P(X <= x-1)
+    #
+    # because the binomial distribution is discrete. Using 1 - F(x) would
+    # instead give P(X > x), which excludes the probability mass at x.
+    #
+    # The minimum tail probability is multiplied by 2 because the test is
+    # two-sided.
     p_value: float = 2.0 * min(
         binom.cdf(x, t, q),
         1.0 - binom.cdf(x - 1, t, q)
