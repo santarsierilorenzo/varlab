@@ -145,7 +145,7 @@ def exact_binomial_coverage_test(
     p_value = min(p_value, 1.0)
     reject = p_value < alpha
 
-    outcome = "Fail" if reject else "Pass"
+    outcome = "FAIL" if reject else "PASS"
 
     return CoverageTestResult(
         test_name="Exact Binomial Coverage",
@@ -220,7 +220,7 @@ def kupiec_pof_test(
     p_value: float = chi2.sf(lr_stat, df=1)
     reject = p_value < alpha
 
-    outcome = "Fail" if reject else "Pass"
+    outcome = "FAIL" if reject else "PASS"
 
     return CoverageTestResult(
         test_name="Kupiec POF",
@@ -289,9 +289,12 @@ def basel_traffic_light_test(
         9: 3.85,
     }
 
+    outcome = "FAIL"
+
     if violations <= 4:
         zone = "green"
         multiplier = 3.0
+        outcome = "PASS"
     elif violations <= 9:
         zone = "yellow"
         multiplier = yellow_multiplier_map[violations]
@@ -305,6 +308,7 @@ def basel_traffic_light_test(
         p_value=None,
         reject=None,
         info={
+            "outcome": outcome,
             "window": window,
             "confidence": confidence,
             "violations": violations,
