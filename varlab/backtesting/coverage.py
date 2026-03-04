@@ -74,7 +74,7 @@ def _validate_probability(
 def exact_binomial_coverage_test(
     exceedances: Sequence[int],
     confidence: float,
-    alpha: Optional[float] = None,
+    alpha: float = 0.05,
 ) -> CoverageTestResult:
     """
     Exact two-sided binomial coverage test.
@@ -94,8 +94,8 @@ def exact_binomial_coverage_test(
         Binary exceedance indicators.
     confidence : float
         VaR confidence level.
-    alpha : Optional[float]
-        Significance level. If provided, reject decision returned.
+    alpha : float
+        Test significance level.
 
     Returns
     -------
@@ -103,9 +103,7 @@ def exact_binomial_coverage_test(
     """
     arr = _validate_exceedances(exceedances)
     _validate_probability(confidence, "confidence")
-
-    if alpha is not None:
-        _validate_probability(alpha, "alpha")
+    _validate_probability(alpha, "alpha")
 
     t: int = len(arr)
     x: int = int(np.sum(arr))
@@ -140,22 +138,21 @@ def exact_binomial_coverage_test(
     #
     # The minimum tail probability is multiplied by 2 because the test is
     # two-sided.
-    p_value: float = 2.0 * min(
-        binom.cdf(x, t, q),
-        1.0 - binom.cdf(x - 1, t, q)
-    )
-    p_value = min(p_value, 1.0)
+    p_left: float = binom.cdf(x, t, q)
+    p_right: float = 1.0 - binom.cdf(x - 1, t, q)
 
-    reject: Optional[bool] = None
-    if alpha is not None:
-        reject = p_value < alpha
+    p_value: float = 2.0 * min(p_left, p_right)
+    p_value = min(p_value, 1.0)
+    reject = p_value < alpha
+
+    outcome = "Fail" if reject else "Pass"
 
     return CoverageTestResult(
         test_name="Exact Binomial Coverage",
-        statistic=float(x),
+        statistic=x,
         p_value=float(p_value),
-        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": t,
             "observed_violations": x,
             "expected_violations": t * q,
