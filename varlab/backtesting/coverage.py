@@ -128,7 +128,8 @@ def exact_binomial_coverage_test(
     #     p = 2 * min(P(X <= x), P(X >= x))
     #
     # and reject when p < alpha. This is equivalent to the rejection-region
-    # formulation.
+    # formulation: p < alpha if and only if the observed number of exceedances
+    # x does not belong to the acceptance interval [x_1, x_2].
     #
     # The right tail probability P(X >= x) is computed as
     #
