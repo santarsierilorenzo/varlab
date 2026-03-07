@@ -321,7 +321,7 @@ def basel_traffic_light_test(
 def christoffersen_conditional_coverage_test(
     exceedances: Sequence[int],
     confidence: float,
-    alpha: Optional[float] = None,
+    alpha: float = 0.05,
 ) -> CoverageTestResult:
     """
     Christoffersen (1998) Conditional Coverage Test.
@@ -346,7 +346,7 @@ def christoffersen_conditional_coverage_test(
     kupiec_res = kupiec_pof_test(
         exceedances,
         confidence,
-        alpha=None,
+        alpha=alpha,
     )
 
     lr_uc = kupiec_res.statistic

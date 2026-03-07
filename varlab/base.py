@@ -12,6 +12,7 @@ ArrayLike = Iterable[float]
 def estimate_sigma(
     values: np.ndarray,
     weights: Optional[ArrayLike] = None,
+    ddof: int = 1
 ) -> float:
     """
     Estimate volatility for single asset or portfolio returns.
@@ -19,7 +20,7 @@ def estimate_sigma(
     if values.ndim == 1:
         if values.size < 2:
             raise ValueError("Insufficient sample size.")
-        sigma = values.std(ddof=1)
+        sigma = values.std(ddof=ddof)
 
     elif values.ndim == 2:
         if weights is None:

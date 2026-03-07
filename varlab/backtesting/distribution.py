@@ -52,13 +52,17 @@ def _kolmogorov_test(
         raise ValueError("PIT values outside [0,1]")
 
     stat, pval = kstest(u.values, "uniform")
+    reject = bool(pval < alpha)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return DistributionTestResult(
         test_name="Kolmogorov-Smirnov Uniform Test",
         statistic=float(stat),
         p_value=float(pval),
-        reject=bool(pval < alpha),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(len(u)),
             "alpha": alpha,
         },
@@ -80,7 +84,7 @@ def _independence_test(
     if len(u) < 100:
         raise ValueError("Sample too small for reliable BDS test")
 
-    epsilon = 0.5 * np.std(u.values, ddof=1)
+    epsilon = 0.5 * np.std(u.values, ddof=1)  # Neighborhood radius for BDS
 
     stats, pvals = bds(
         u.values,
@@ -88,7 +92,8 @@ def _independence_test(
         epsilon=epsilon,
     )
 
-    reject = bool(np.any(pvals < alpha))
+    reject = bool(np.any(pvals < alpha))   
+    outcome = "FAIL" if reject else "PASS"
 
     return DistributionTestResult(
         test_name="BDS Independence Test",
@@ -96,6 +101,7 @@ def _independence_test(
         p_value=pvals,
         reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(len(u)),
             "alpha": alpha,
             "max_dim": max_dim,

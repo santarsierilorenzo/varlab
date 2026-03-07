@@ -1,4 +1,6 @@
 from typing import Iterable, Optional, Tuple, Literal
+from ..window import RollingRisk, ExpandingRisk
+from ..base import estimate_sigma
 from scipy.stats import norm, t
 import pandas as pd
 import numpy as np
@@ -20,7 +22,7 @@ def pit_checks(
     if distribution == "t":
         if df is None or df <= 2:
             raise ValueError("df must be provided and > 2 for t distribution")
-        
+
 
 def randomized_pit(
     history: Iterable[float],
@@ -61,8 +63,9 @@ def randomized_pit(
 
 
 def rolling_pit(
-    returns: pd.Series,
+    returns: pd.Series | pd.DataFrame,
     case: Literal["continuous", "discrete"] = "continuous",
+    weights: Optional[pd.Series | pd.DataFrame] = None,
     distribution: Dist = "normal",
     df: Optional[int] = None,
     window: int = 60,
@@ -81,27 +84,71 @@ def rolling_pit(
     if window < 1:
         raise ValueError("window must be >= 1")
 
-    returns = returns.astype(float)
-
     if case == "continuous":
-        mu = (
-            returns.rolling(window).mean().shift(1)
-            if mean == "sample"
-            else 0.0
-        )
 
-        sigma = returns.rolling(window).std(ddof=ddof).shift(1)
+        returns = returns.astype(float)
 
-        pit = pd.Series(np.nan, index=returns.index)
+        # Case 1: single asset
+        if isinstance(returns, pd.Series):
+            x = returns
+
+            mu = (
+                x.rolling(window).mean().shift(1)
+                if mean == "sample"
+                else 0.0
+            )
+
+            sigma = RollingRisk(
+                estimate_sigma,
+                window=window,
+                ddof=ddof,
+            )(x).shift(1)
+
+        # Case 2: portfolio with time-varying weights
+        else:
+
+            if weights is None:
+                raise ValueError(
+                    "weights must be provided when returns is a DataFrame"
+                )
+
+            if not isinstance(weights, pd.DataFrame):
+                raise ValueError(
+                    "weights must be a DataFrame when returns is a DataFrame"
+                )
+
+            if not returns.index.equals(weights.index):
+                raise ValueError("returns and weights index mismatch")
+
+            if not returns.columns.equals(weights.columns):
+                raise ValueError("returns and weights columns mismatch")
+
+            # Portfolio observation
+            x = (returns * weights).sum(axis=1)
+
+            mu = (
+                x.rolling(window).mean().shift(1)
+                if mean == "sample"
+                else 0.0
+            )
+
+            sigma = RollingRisk(
+                estimate_sigma,
+                window=window,
+                ddof=ddof,
+            )(returns, weights=weights).shift(1)
+
+        pit = pd.Series(np.nan, index=x.index)
+
         valid = (~sigma.isna()) & (sigma > 0)
 
         if not valid.any():
             return pit
 
         if mean == "sample":
-            z = (returns[valid] - mu[valid]) / sigma[valid]
+            z = (x[valid] - mu[valid]) / sigma[valid]
         else:
-            z = returns[valid] / sigma[valid]
+            z = x[valid] / sigma[valid]
 
         if distribution == "normal":
             pit[valid] = norm.cdf(z)
@@ -111,6 +158,13 @@ def rolling_pit(
         return pit
 
     # Discrete case
+    returns = returns.astype(float)
+
+    if isinstance(returns, pd.DataFrame):
+        raise ValueError(
+            "Discrete PIT currently supports only Series inputs"
+        )
+
     u = [np.nan] * len(returns)
 
     for t_idx in range(window, len(returns)):
@@ -122,8 +176,9 @@ def rolling_pit(
 
 
 def expanding_pit(
-    returns: pd.Series,
+    returns: pd.Series | pd.DataFrame,
     case: Literal["continuous", "discrete"] = "continuous",
+    weights: Optional[pd.Series | pd.DataFrame] = None,
     distribution: Dist = "normal",
     df: Optional[int] = None,
     min_periods: int = 30,
@@ -138,28 +193,97 @@ def expanding_pit(
     if min_periods < 1:
         raise ValueError("min_periods must be >= 1")
 
+    if case == "continuous":
+
+        returns = returns.astype(float)
+
+        # Case 1: single asset
+        if isinstance(returns, pd.Series):
+
+            x = returns
+
+            mu = (
+                x.expanding(min_periods).mean().shift(1)
+                if mean == "sample"
+                else 0.0
+            )
+
+            sigma = ExpandingRisk(
+                estimate_sigma,
+                min_periods=min_periods,
+                ddof=ddof,
+                
+            )(x).shift(1)
+
+        # Case 2: portfolio
+        else:
+
+            if weights is None:
+                raise ValueError(
+                    "weights must be provided when returns is a DataFrame"
+                )
+
+            if not isinstance(weights, pd.DataFrame):
+                raise ValueError(
+                    "weights must be a DataFrame when returns is a DataFrame"
+                )
+
+            if not returns.index.equals(weights.index):
+                raise ValueError("returns and weights index mismatch")
+
+            if not returns.columns.equals(weights.columns):
+                raise ValueError("returns and weights columns mismatch")
+
+            # Portfolio return
+            x = (returns * weights).sum(axis=1)
+
+            mu = (
+                x.expanding(min_periods).mean().shift(1)
+                if mean == "sample"
+                else 0.0
+            )
+
+            sigma = ExpandingRisk(
+                estimate_sigma,
+                min_periods=min_periods,
+                ddof=ddof,
+            )(returns, weights=weights).shift(1)
+
+        pit = pd.Series(np.nan, index=x.index)
+
+        valid = (~sigma.isna()) & (sigma > 0)
+
+        if not valid.any():
+            return pit
+
+        if mean == "sample":
+            z = (x[valid] - mu[valid]) / sigma[valid]
+        else:
+            z = x[valid] / sigma[valid]
+
+        if distribution == "normal":
+            pit[valid] = norm.cdf(z)
+        else:
+            pit[valid] = t.cdf(z, df=df)
+
+        return pit
+
+    # Discrete case
     returns = returns.astype(float)
+
+    if isinstance(returns, pd.DataFrame):
+        raise ValueError(
+            "Discrete PIT currently supports only Series inputs"
+        )
+
     u = [np.nan] * len(returns)
 
     for t_idx in range(min_periods, len(returns)):
         hist = returns.iloc[:t_idx]
 
-        if case == "continuous":
-            sigma = hist.std(ddof=ddof)
-
-            if sigma <= 0 or np.isnan(sigma):
-                continue
-
-            mu = hist.mean() if mean == "sample" else 0.0
-
-            z = (returns.iloc[t_idx] - mu) / sigma
-
-            if distribution == "normal":
-                u[t_idx] = norm.cdf(z)
-            else:
-                u[t_idx] = t.cdf(z, df=df)
-
-        else:
-            u[t_idx] = randomized_pit(hist.to_numpy(), returns.iloc[t_idx])
+        u[t_idx] = randomized_pit(
+            hist.to_numpy(),
+            returns.iloc[t_idx],
+        )
 
     return pd.Series(u, index=returns.index)
