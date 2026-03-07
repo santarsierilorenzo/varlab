@@ -153,6 +153,10 @@ def rolling_pit(
         if distribution == "normal":
             pit[valid] = norm.cdf(z)
         else:
+            # Map unit-variance standardized residuals to canonical Student-t
+            # scale before applying the t CDF.
+            z *= np.sqrt(df / (df - 2))
+
             pit[valid] = t.cdf(z, df=df)
 
         return pit
@@ -264,6 +268,10 @@ def expanding_pit(
         if distribution == "normal":
             pit[valid] = norm.cdf(z)
         else:
+            # Map unit-variance standardized residuals to canonical Student-t
+            # scale before applying the t CDF.
+            z *= np.sqrt(df / (df - 2))
+            
             pit[valid] = t.cdf(z, df=df)
 
         return pit

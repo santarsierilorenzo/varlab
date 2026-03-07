@@ -8,6 +8,7 @@ JSON-serializable output format.
 
 from typing import Any, Dict, Iterable, Literal, Sequence
 from . import coverage, distribution, independence
+import pandas as pd
 import numpy as np
 
 
@@ -62,8 +63,26 @@ def _serialize_result(obj: Any) -> Dict[str, Any]:
     }
 
 
-def run(
+def _normalize_returns(
     returns: Iterable[Any],
+) -> pd.Series | pd.DataFrame:
+    """Normalize input returns to pandas objects expected downstream."""
+    if isinstance(returns, (pd.Series, pd.DataFrame)):
+        return returns
+
+    arr = np.asarray(returns)
+
+    if arr.ndim == 1:
+        return pd.Series(arr)
+
+    if arr.ndim == 2:
+        return pd.DataFrame(arr)
+
+    raise ValueError("returns must be 1D or 2D.")
+
+
+def run(
+    returns: pd.Series | pd.DataFrame,
     exceedances: Iterable[bool],
     confidence: float,
     window_type: WindowType,
@@ -85,6 +104,13 @@ def run(
         confidence=confidence,
         window=window,
     )
+    normalized_returns = _normalize_returns(returns)
+
+    if isinstance(normalized_returns, pd.DataFrame):
+        raise ValueError(
+            "diagnostic.run expects 1D portfolio returns. "
+            "Aggregate multi-asset returns before calling run."
+        )
 
     results: Dict[str, Any] = {}
 
@@ -127,7 +153,7 @@ def run(
 
     # Distribution diagnostics (flattened)
     pit_results = distribution.pit_diagnostics(
-        returns,
+        normalized_returns,
         case=pit_case,
         window_type=window_type,
         window=window,
@@ -146,7 +172,7 @@ def run(
 
     results["independence_loss_quantile"] = _serialize_result(
         independence.loss_quantile_independence_test(
-            returns,
+            normalized_returns,
             case=pit_case,
             window_type=window_type,
             window=window,

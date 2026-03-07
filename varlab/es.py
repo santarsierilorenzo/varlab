@@ -165,7 +165,11 @@ def _parametric_es(
             mu = np.mean(losses)
         else:
             weights_arr = np.asarray(weights, dtype=float)
-            mu = np.sum(weights_arr * losses, axis=1)
+            if losses.ndim == 1:
+                mu = np.mean(losses)
+            else:
+                portfolio_losses = np.sum(losses * weights_arr, axis=1)
+                mu = np.mean(portfolio_losses)
     else:
         mu = 0
 

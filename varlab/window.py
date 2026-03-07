@@ -57,6 +57,12 @@ class _BaseRisk:
         """Ensure input is a pandas object."""
         if isinstance(returns, (pd.Series, pd.DataFrame)):
             return returns
+        
+        returns = np.asarray(returns)
+
+        if returns.ndim > 1:
+            return pd.DataFrame(returns)
+
         return pd.Series(returns)
 
 
@@ -139,7 +145,7 @@ class RollingRisk(_BaseRisk):
             w = None
             if weights is not None:
                 if isinstance(weights, (pd.Series, pd.DataFrame)):
-                    w = weights.iloc[t].to_numpy()
+                    w = np.asarray(weights.iloc[t])
                 else:
                     w = np.asarray(weights)
 
