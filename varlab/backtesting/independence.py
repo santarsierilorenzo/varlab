@@ -344,8 +344,3 @@ def loss_quantile_independence(
             "acf": acf_obs,
         },
     )
-
-
-# Backward-compatible aliases
-christoffersen_test = christoffersen_independence
-loss_quantile_independence_test = loss_quantile_independence

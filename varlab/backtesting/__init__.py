@@ -12,18 +12,12 @@ from .coverage import (
     kupiec_pof,
     basel_traffic_light,
     christoffersen_conditional_coverage,
-    exact_binomial_coverage_test,
-    kupiec_pof_test,
-    basel_traffic_light_test,
-    christoffersen_conditional_coverage_test,
     CoverageTestResult,
 )
 
 from .independence import (
     christoffersen_independence,
     loss_quantile_independence,
-    christoffersen_test,
-    loss_quantile_independence_test,
     IndependenceTestResult,
 )
 
@@ -38,16 +32,10 @@ __all__ = [
     "kupiec_pof",
     "basel_traffic_light",
     "christoffersen_conditional_coverage",
-    "exact_binomial_coverage_test",
-    "kupiec_pof_test",
-    "basel_traffic_light_test",
-    "christoffersen_conditional_coverage_test",
     "CoverageTestResult",
     # Independence
     "christoffersen_independence",
     "loss_quantile_independence",
-    "christoffersen_test",
-    "loss_quantile_independence_test",
     "IndependenceTestResult",
     # Distribution
     "pit_diagnostics",

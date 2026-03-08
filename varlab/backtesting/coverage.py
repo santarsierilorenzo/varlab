@@ -381,10 +381,3 @@ def christoffersen_conditional_coverage(
             "df": 2,
         },
     )
-
-
-# Backward-compatible aliases
-exact_binomial_coverage_test = exact_binomial_coverage
-kupiec_pof_test = kupiec_pof
-basel_traffic_light_test = basel_traffic_light
-christoffersen_conditional_coverage_test = christoffersen_conditional_coverage

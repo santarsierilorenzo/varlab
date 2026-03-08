@@ -269,8 +269,3 @@ def acerbi_szekely(
             "std_z": float(np.std(z_t, ddof=1)),
         },
     )
-
-
-# Backward-compatible aliases
-mcneil_frey_test = mcneil_frey
-acerbi_szekely_test = acerbi_szekely
