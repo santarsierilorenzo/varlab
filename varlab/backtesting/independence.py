@@ -329,14 +329,26 @@ def loss_quantile_independence(
         acf0 = acf(z0, nlags=max_lag, fft=True)[1:]
         t_sim[i] = float(np.max(np.abs(acf0)))
 
+    # The p-value is computed as the fraction of simulated null statistics that
+    # are greater than or equal to the observed statistic:
+    #     p-value = P(T_sim >= T_obs | H0)
+    # where T is max |acf_k| over k = 1, ..., max_lag.
+    #
+    # A small p-value indicates stronger serial dependence than expected under
+    # the i.i.d. N(0,1) null and leads to rejection of independence.
+    # A large p-value means the observed dependence is consistent with the null
     pval = float(np.mean(t_sim >= t_obs))
+    reject = bool(pval < alpha)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return IndependenceTestResult(
         test_name="Loss-Quantile Independence Test",
         statistic=t_obs,
         p_value=pval,
-        reject=bool(pval < alpha),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(n),
             "alpha": float(alpha),
             "max_lag": int(max_lag),
