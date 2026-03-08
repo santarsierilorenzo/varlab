@@ -5,6 +5,7 @@ Includes:
     - Coverage tests
     - Independence tests
     - Distribution diagnostics (PIT-based)
+    - Expected Shortfall validation tests
 """
 
 from .coverage import (
@@ -26,6 +27,12 @@ from .distribution import (
     DistributionTestResult,
 )
 
+from .es_validation import (
+    mcneil_frey,
+    acerbi_szekely,
+    EsTestResult,
+)
+
 __all__ = [
     # Coverage
     "exact_binomial_coverage",
@@ -40,4 +47,8 @@ __all__ = [
     # Distribution
     "pit_diagnostics",
     "DistributionTestResult",
+    # Expected Shortfall
+    "mcneil_frey",
+    "acerbi_szekely",
+    "EsTestResult",
 ]

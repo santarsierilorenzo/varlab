@@ -3,7 +3,12 @@ from __future__ import annotations
 """
 High-level runner for VaR backtesting diagnostics.
 """
-from . import coverage, distribution as distribution_tests, independence
+from . import (
+    coverage,
+    distribution as distribution_tests,
+    independence,
+    es_validation,
+)
 from typing import Any, Dict, Optional, Sequence, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -32,6 +37,7 @@ class TestCategory(str, Enum):
     COVERAGE = "coverage"
     DISTRIBUTION = "distribution"
     INDEPENDENCE = "independence"
+    EXPECTED_SHORTFALL = "expected_shortfall"
 
 
 def _to_builtin(x: Any) -> Any:
@@ -239,6 +245,15 @@ def run(
     loss_seed: Optional[int] = 0,
     christoffersen_eps: float = 1e-12,
     run_basel_if_applicable: bool = True,
+    var_forecast: Sequence[float] | float | None = None,
+    es_forecast: Sequence[float] | float | None = None,
+    es_tail_alpha: Optional[float] = None,
+    es_test_epsilon: float = 0.05,
+    es_test_alternative: Literal[
+        "greater",
+        "less",
+        "two-sided",
+    ] = "greater",
     test_types: Sequence[TestCategory] | None = None,
 ) -> DiagnosticRunResult:
     """
@@ -360,6 +375,42 @@ def run(
         results[TestCategory.INDEPENDENCE] = {
             k: _result_from_object(v)
             for k, v in ind.items()
+        }
+
+    if TestCategory.EXPECTED_SHORTFALL in test_types:
+        if var_forecast is None or es_forecast is None:
+            raise ValueError(
+                "var_forecast and es_forecast are required when "
+                "running expected shortfall diagnostics."
+            )
+
+        tail_alpha = (
+            1.0 - confidence
+            if es_tail_alpha is None
+            else es_tail_alpha
+        )
+
+        es_results = {
+            "mcneil_frey": es_validation.mcneil_frey(
+                returns=returns,
+                var=var_forecast,
+                es=es_forecast,
+                epsilon=es_test_epsilon,
+                alternative=es_test_alternative,
+            ),
+            "acerbi_szekely": es_validation.acerbi_szekely(
+                returns=returns,
+                var=var_forecast,
+                es=es_forecast,
+                alpha=tail_alpha,
+                epsilon=es_test_epsilon,
+                alternative=es_test_alternative,
+            ),
+        }
+
+        results[TestCategory.EXPECTED_SHORTFALL] = {
+            k: _result_from_object(v)
+            for k, v in es_results.items()
         }
 
     return DiagnosticRunResult(
