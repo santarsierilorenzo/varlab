@@ -1,183 +1,333 @@
+from __future__ import annotations
+
 """
 High-level runner for VaR backtesting diagnostics.
-
-Provides a single entry-point that aggregates coverage,
-independence and distribution tests into a unified,
-JSON-serializable output format.
 """
-
-from typing import Any, Dict, Iterable, Literal, Sequence
 from . import coverage, distribution, independence
+from dataclasses import dataclass, field
+from typing import Any, Dict, Sequence
+from datetime import datetime
+from enum import Enum
 import pandas as pd
 import numpy as np
 
 
-WindowType = Literal["rolling", "expanding"]
-PitCase = Literal["discrete", "continuous"]
+class WindowType(str, Enum):
+    """Supported PIT window schemes."""
+    ROLLING = "rolling"
+    EXPANDING = "expanding"
 
 
-def _validate_inputs(
-    returns: Sequence[Any],
-    exceedances: Sequence[bool],
-    confidence: float,
-    window: int,
-) -> None:
-    """Validate basic input constraints."""
-    if len(returns) != len(exceedances):
-        raise ValueError(
-            "returns and exceedances must have same length. "
-            f"Got {len(returns)} vs {len(exceedances)}."
-        )
-    if not (0.0 < confidence < 1.0):
-        raise ValueError("confidence must be in (0, 1).")
-    if window <= 0:
-        raise ValueError("window must be positive.")
-    if len(returns) < 2:
-        raise ValueError("Need at least 2 observations.")
+class PitCase(str, Enum):
+    """Supported PIT transformation cases."""
+    DISCRETE = "discrete"
+    CONTINUOUS = "continuous"
+
+
+class TestCategory(str, Enum):
+    """Backtest categories."""
+    COVERAGE = "coverage"
+    DISTRIBUTION = "distribution"
+    INDEPENDENCE = "independence"
 
 
 def _to_builtin(x: Any) -> Any:
-    """Convert numpy types into Python builtins."""
+    """Convert numpy scalars to Python builtins."""
+
     if isinstance(x, np.ndarray):
         return x.tolist()
-    if isinstance(x, (np.bool_,)):
+
+    if isinstance(x, np.bool_):
         return bool(x)
-    if isinstance(x, (np.integer,)):
+
+    if isinstance(x, np.integer):
         return int(x)
-    if isinstance(x, (np.floating,)):
+
+    if isinstance(x, np.floating):
         return float(x)
+
     return x
 
 
-def _serialize_result(obj: Any) -> Dict[str, Any]:
-    """Standardize test result objects into dictionaries."""
-    return {
-        "test_name": obj.test_name,
-        "statistic": _to_builtin(obj.statistic),
-        "p_value": _to_builtin(obj.p_value),
-        "reject": _to_builtin(obj.reject),
-        "info": {
-            k: _to_builtin(v)
-            for k, v in getattr(obj, "info", {}).items()
-        },
-    }
+def _ensure_series(
+    returns: pd.Series | Sequence[float]
+) -> pd.Series:
+    """Ensure returns are a pandas Series."""
 
-
-def _normalize_returns(
-    returns: Iterable[Any],
-) -> pd.Series | pd.DataFrame:
-    """Normalize input returns to pandas objects expected downstream."""
-    if isinstance(returns, (pd.Series, pd.DataFrame)):
+    if isinstance(returns, pd.Series):
         return returns
 
     arr = np.asarray(returns)
 
-    if arr.ndim == 1:
-        return pd.Series(arr)
+    if arr.ndim != 1:
+        raise ValueError("returns must be 1-dimensional.")
 
-    if arr.ndim == 2:
-        return pd.DataFrame(arr)
+    return pd.Series(arr)
 
-    raise ValueError("returns must be 1D or 2D.")
+
+@dataclass(frozen=True)
+class BacktestResult:
+    """Standardized single-test result."""
+
+    test_name: str
+    statistic: Any
+    p_value: Any
+    reject: bool
+    info: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return JSON-serializable dictionary."""
+
+        return {
+            "test_name": self.test_name,
+            "statistic": _to_builtin(self.statistic),
+            "p_value": _to_builtin(self.p_value),
+            "reject": bool(self.reject),
+            "info": {
+                k: _to_builtin(v)
+                for k, v in self.info.items()
+            },
+        }
+
+    @property
+    def outcome(self) -> str:
+        """Return PASS or FAIL."""
+
+        outcome = self.info.get("outcome")
+
+        if outcome not in {"PASS", "FAIL"}:
+            raise ValueError(
+                f"Missing outcome for test '{self.test_name}'."
+            )
+
+        return outcome
+
+
+@dataclass(frozen=True)
+class DiagnosticRunResult:
+    """Aggregated result of a diagnostic run."""
+
+    results: Dict[TestCategory, Dict[str, BacktestResult]]
+    confidence_level: float
+    sample_size: int
+    test_date: str
+
+    def snapshot(self) -> Dict[str, Dict[str, str]]:
+        """Return category -> test -> PASS/FAIL."""
+
+        return {
+            category.value: {
+                name: result.outcome
+                for name, result in tests.items()
+            }
+            for category, tests in self.results.items()
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return full JSON result."""
+
+        return {
+            "meta": {
+                "confidence_level": self.confidence_level,
+                "sample_size": self.sample_size,
+                "test_date": self.test_date,
+            },
+            "results": {
+                category.value: {
+                    name: res.to_dict()
+                    for name, res in tests.items()
+                }
+                for category, tests in self.results.items()
+            },
+        }
+
+    def _overall(self) -> str:
+        outcomes = [
+            r.outcome
+            for tests in self.results.values()
+            for r in tests.values()
+        ]
+
+        return "FAIL" if "FAIL" in outcomes else "PASS"
+
+    def _format_name(self, name: str) -> str:
+        return name.replace("_", " ").title()
+
+    def report(self) -> str:
+        """Return ASCII report."""
+
+        width = 66
+        col_test = 52
+
+        conf = f"{self.confidence_level * 100:.2f}%"
+
+        lines = [
+            "=" * width,
+            "VALUE AT RISK BACKTEST REPORT".center(width),
+            "=" * width,
+            (
+                f"Confidence level: {conf} | "
+                f"Sample size: {self.sample_size} | "
+                f"Date: {self.test_date}"
+            ),
+            f"Overall result: {self._overall()}",
+            "",
+        ]
+
+        snapshot = self.snapshot()
+
+        for category, tests in snapshot.items():
+
+            passed = sum(x == "PASS" for x in tests.values())
+            total = len(tests)
+
+            lines.append(f"{category.upper()} ({passed}/{total})")
+            lines.append("-" * width)
+
+            for name, result in tests.items():
+
+                label = self._format_name(name)
+
+                lines.append(
+                    f"{label:<{col_test}}{result:>8}"
+                )
+
+        return "\n".join(lines)
+
+    def __str__(self) -> str:
+        return self.report()
+
+    def __repr__(self) -> str:
+        return self.report()
+
+
+def _result_from_object(obj: Any) -> BacktestResult:
+    """Convert internal test object to BacktestResult."""
+
+    return BacktestResult(
+        test_name=obj.test_name,
+        statistic=obj.statistic,
+        p_value=obj.p_value,
+        reject=bool(obj.reject),
+        info=getattr(obj, "info", {}),
+    )
 
 
 def run(
-    returns: pd.Series | pd.DataFrame,
-    exceedances: Iterable[bool],
+    returns: pd.Series | Sequence[float],
+    exceedances: Sequence[bool],
     confidence: float,
-    window_type: WindowType,
-    pit_case: PitCase,
+    window_type: WindowType | str,
+    pit_case: PitCase | str,
     alpha: float = 0.05,
     n_sim: int = 5000,
     window: int = 120,
     run_basel_if_applicable: bool = True,
-) -> Dict[str, Any]:
+    test_types: Sequence[TestCategory] | None = None,
+) -> DiagnosticRunResult:
     """
-    Run a suite of VaR backtests and diagnostics.
-
-    Returns a flat dictionary of standardized test results.
+    Run VaR backtesting diagnostics.
     """
 
-    _validate_inputs(
-        returns=returns,
-        exceedances=exceedances,
-        confidence=confidence,
-        window=window,
-    )
-    normalized_returns = _normalize_returns(returns)
+    if isinstance(window_type, str):
+        window_type = WindowType(window_type)
 
-    if isinstance(normalized_returns, pd.DataFrame):
+    if isinstance(pit_case, str):
+        pit_case = PitCase(pit_case)
+
+    if test_types is None:
+        test_types = (
+            TestCategory.COVERAGE,
+            TestCategory.DISTRIBUTION,
+            TestCategory.INDEPENDENCE,
+        )
+
+    returns = _ensure_series(returns)
+
+    if len(returns) != len(exceedances):
         raise ValueError(
-            "diagnostic.run expects 1D portfolio returns. "
-            "Aggregate multi-asset returns before calling run."
+            "returns and exceedances must have same length."
         )
 
-    results: Dict[str, Any] = {}
+    results: Dict[TestCategory, Dict[str, BacktestResult]] = {}
 
-    # Coverage tests
-    results["coverage_exact_binomial"] = _serialize_result(
-        coverage.exact_binomial_coverage(
-            exceedances,
-            confidence=confidence,
-            alpha=alpha,
-        )
-    )
+    if TestCategory.COVERAGE in test_types:
 
-    results["coverage_kupiec_pof"] = _serialize_result(
-        coverage.kupiec_pof(
-            exceedances,
-            confidence=confidence,
-            alpha=alpha,
-        )
-    )
+        cov = {
 
-    results["coverage_christoffersen_conditional"] = (
-        _serialize_result(
-            coverage.christoffersen_conditional_coverage(
+            "exact_binomial": coverage.exact_binomial_coverage(
                 exceedances,
                 confidence=confidence,
                 alpha=alpha,
-            )
-        )
-    )
+            ),
 
-    if run_basel_if_applicable and confidence == 0.99:
-        results["coverage_basel_traffic_light"] = (
-            _serialize_result(
-                coverage.basel_traffic_light(
+            "kupiec_pof": coverage.kupiec_pof(
+                exceedances,
+                confidence=confidence,
+                alpha=alpha,
+            ),
+
+            "christoffersen_conditional":
+                coverage.christoffersen_conditional_coverage(
                     exceedances,
                     confidence=confidence,
-                )
+                    alpha=alpha,
+                ),
+        }
+
+        if run_basel_if_applicable and np.isclose(confidence, 0.99):
+
+            cov["basel_traffic_light"] = coverage.basel_traffic_light(
+                exceedances,
+                confidence=confidence,
             )
-        )
 
-    # Distribution diagnostics (flattened)
-    pit_results = distribution.pit_diagnostics(
-        normalized_returns,
-        case=pit_case,
-        window_type=window_type,
-        window=window,
-        alpha=alpha,
-    )
+        results[TestCategory.COVERAGE] = {
+            k: _result_from_object(v)
+            for k, v in cov.items()
+        }
 
-    for name, obj in pit_results.items():
-        results[f"distribution_{name}"] = _serialize_result(obj)
+    if TestCategory.DISTRIBUTION in test_types:
 
-    # Independence tests
-    results["independence_christoffersen"] = _serialize_result(
-        independence.christoffersen_independence(
-            exceedances
-        )
-    )
-
-    results["independence_loss_quantile"] = _serialize_result(
-        independence.loss_quantile_independence(
-            normalized_returns,
-            case=pit_case,
-            window_type=window_type,
+        pit = distribution.pit_diagnostics(
+            returns,
+            case=pit_case.value,
+            window_type=window_type.value,
             window=window,
-            n_sim=n_sim,
+            alpha=alpha,
         )
-    )
 
-    return results
+        results[TestCategory.DISTRIBUTION] = {
+            name: _result_from_object(obj)
+            for name, obj in pit.items()
+        }
+
+    if TestCategory.INDEPENDENCE in test_types:
+
+        ind = {
+
+            "christoffersen": independence.christoffersen_independence(
+                exceedances
+            ),
+
+            "loss_quantile":
+                independence.loss_quantile_independence(
+                    returns,
+                    case=pit_case.value,
+                    window_type=window_type.value,
+                    window=window,
+                    n_sim=n_sim,
+                ),
+        }
+
+        results[TestCategory.INDEPENDENCE] = {
+            k: _result_from_object(v)
+            for k, v in ind.items()
+        }
+
+    return DiagnosticRunResult(
+        results=results,
+        confidence_level=confidence,
+        sample_size=len(returns),
+        test_date=datetime.utcnow().strftime("%Y-%m-%d"),
+    )
