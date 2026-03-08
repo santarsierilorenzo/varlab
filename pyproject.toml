@@ -1,0 +1,18 @@
+[project]
+name = "varlab"
+version = "0.1.o"
+description = "A minimal Python package for Value at Risk, Expected Shortfall"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Lorenzo Santarsieri" }]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy==2.2.6"
+    "scipy==1.15.3"
+    "pandas==2.2.3"
+    "statsmodels==0.14.4"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
