@@ -29,6 +29,7 @@ pip install varlab
 - Expected Shortfall (`es`)
 - Rolling and expanding estimators (`rolling_var`, `rolling_es`, `expanding_var`, `expanding_es`)
 - VaR backtesting diagnostics with a concise ASCII report and structured outputs
+- Optional ES backtesting diagnostics in the high-level diagnostic runner
 - PIT-based distribution diagnostics (including randomized PIT for empirical/discrete cases)
 
 Both VaR and ES support:
@@ -105,6 +106,35 @@ back_res = backtesting.diagnostic.run(
 )
 ```
 
+Include Expected Shortfall backtests in the same high-level runner:
+
+```python
+from varlab import backtesting
+from varlab.backtesting.diagnostic import TestCategory
+
+back_res_es = backtesting.diagnostic.run(
+    returns=returns,
+    exceedances=exceedances,
+    confidence=0.99,
+    window_type="rolling",
+    pit_case="discrete",
+    alpha=0.05,
+    window=60,
+    test_types=(
+        TestCategory.COVERAGE,
+        TestCategory.DISTRIBUTION,
+        TestCategory.INDEPENDENCE,
+        TestCategory.EXPECTED_SHORTFALL,
+    ),
+    var_forecast=var_forecast,
+    es_forecast=es_forecast,
+    # Optional ES-specific controls:
+    # es_tail_alpha=0.01,            # defaults to 1 - confidence
+    # es_test_epsilon=0.05,
+    # es_test_alternative="greater",
+)
+```
+
 Example report:
 
 ```text
@@ -131,6 +161,11 @@ INDEPENDENCE (2/2)
 ------------------------------------------------------------------
 Christoffersen                                          PASS
 Loss Quantile                                           PASS
+
+EXPECTED SHORTFALL (2/2)
+------------------------------------------------------------------
+Mcneil Frey                                             PASS
+Acerbi Szekely                                          PASS
 ```
 
 The diagnostic object is typed and machine-friendly, so you can inspect details programmatically:
@@ -146,6 +181,8 @@ back_res.results['independence']["christoffersen"]
   PIT-based diagnostics (uniformity, independence, Berkowitz)
 - Independence:
   Christoffersen exceedance independence, loss-quantile independence
+- Expected Shortfall:
+  McNeil-Frey, Acerbi-Szekely (requires `var_forecast` and `es_forecast` in `diagnostic.run`)
 
 ## Probability Integral Transform (PIT)
 Distribution diagnostics rely on PIT values:
