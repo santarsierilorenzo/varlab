@@ -43,6 +43,7 @@ def pit_checks(
     case: Case,
     distribution: Dist,
     df: Optional[int],
+    window_type: WindowType,
 ) -> None:
     """
     Validate PIT configuration.
@@ -55,6 +56,8 @@ def pit_checks(
         Parametric distribution assumed for standardized residuals.
     df : Optional[int]
         Degrees of freedom for the Student-t distribution.
+    window_type : {"rolling", "expanding"}
+        Window scheme for PIT estimation.
         
     Raises
     ------
@@ -71,6 +74,9 @@ def pit_checks(
         raise ValueError(
             "df must be provided and greater than 2 for t distribution"
         )
+
+    if window_type not in {"rolling", "expanding"}:
+        raise ValueError("window_type must be either 'rolling' or 'expanding'")
    
 
 def randomized_pit(
@@ -388,7 +394,7 @@ def pit(
         If PIT parameters are invalid or window parameters are
         inconsistent.
     """
-    pit_checks(case, distribution, df)
+    pit_checks(case, distribution, df, window_type)
 
     params = [window_size, window, min_periods]
     n_specified = sum(param is not None for param in params)

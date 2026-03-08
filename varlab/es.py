@@ -45,13 +45,17 @@ def es(
     Parameters
     ----------
     returns : ArrayLike
-        Return/PnL observations. If 2D (T, N), interpreted as asset returns.
+        Return/PnL observations.
+        For `method="empirical"` this must be a 1D time series of
+        already-aggregated (already-weighted) portfolio returns/losses.
+        For `method="parametric"`, 2D input (T, N) is interpreted as
+        asset returns.
     n_days : int, default=1
         Forecast horizon in days. Must be positive.
     confidence : float, default=0.99
         Confidence level in (0, 1).
     method : {"empirical", "parametric"}, default="empirical"
-        Estimation method.
+        Estimation method. Empirical method supports only 1D inputs.
     weights : Optional[ArrayLike], default=None
         Portfolio weights. Used for 2D inputs in the parametric method.
     distribution : str, default="normal"
@@ -69,6 +73,9 @@ def es(
     """
     if distribution not in {"normal", "t"}:
         raise ValueError("distribution must be 'normal' or 't'")
+
+    if mean not in {"zero", "sample"}:
+        raise ValueError("mean must be 'zero' or 'sample'")
     
     losses = -np.asarray(returns, dtype=float)
 
