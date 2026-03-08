@@ -8,8 +8,9 @@ Value-at-Risk (VaR) model validation.
 from __future__ import annotations
 
 from typing import Optional, Literal, Dict, Any, Union
-from .pit import rolling_pit, expanding_pit
 from scipy.stats import norm, t, kstest, chi2
+from statsmodels.tsa.ar_model import AutoReg
+from .pit import rolling_pit, expanding_pit
 from statsmodels.tsa.stattools import bds
 from dataclasses import dataclass
 import pandas as pd
@@ -135,7 +136,6 @@ def _berkowitz_test(
     Under H0, the LR statistic is asymptotically chi-square with 3 degrees
     of freedom.
     """
-    # Prepare PIT series
     u = pd.Series(pit).dropna().astype(float)
 
     if len(u) < 50:
@@ -158,23 +158,20 @@ def _berkowitz_test(
 
     # Unrestricted model: Gaussian AR(1)
     #
-    # Since the model is linear and Gaussian:
-    #   - The MLE of (c, rho) coincides with OLS estimates.
-    #   - The MLE of sigma^2 is the mean of squared residuals
-    #     (i.e., SSR / (T-1)).
-    #
-    # We use the conditional likelihood (conditioning on z_1).
-    y = z[1:]
-    X = np.column_stack([np.ones(len(y)), z[:-1]])
+    # We estimate the AR(1) using statsmodels.AutoReg.
+    # AutoReg performs OLS estimation, which coincides with the
+    # MLE for Gaussian linear models.
+    model = AutoReg(z, lags=1)
+    res = model.fit()
 
-    beta_hat, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    c_hat = res.params[0]
+    rho_hat = res.params[1]
 
-    c_hat = beta_hat[0]
-    rho_hat = beta_hat[1]
-
-    resid = y - X @ beta_hat
+    # Residuals from AR(1)
+    resid = res.resid
 
     # MLE of variance (NOT the unbiased estimator)
+    # Berkowitz LR requires SSR / (T-1)
     sigma2_hat = np.mean(resid ** 2)
 
     T = len(z)
