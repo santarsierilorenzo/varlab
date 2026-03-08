@@ -3,7 +3,7 @@ name = "varlab"
 version = "0.1.0"
 description = "A minimal Python package for Value at Risk, Expected Shortfall"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Lorenzo Santarsieri" }]
 requires-python = ">=3.11"
 dependencies = [
@@ -16,3 +16,6 @@ dependencies = [
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["varlab*"]
