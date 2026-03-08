@@ -116,7 +116,7 @@ def run(
 
     # Coverage tests
     results["coverage_exact_binomial"] = _serialize_result(
-        coverage.exact_binomial_coverage_test(
+        coverage.exact_binomial_coverage(
             exceedances,
             confidence=confidence,
             alpha=alpha,
@@ -124,7 +124,7 @@ def run(
     )
 
     results["coverage_kupiec_pof"] = _serialize_result(
-        coverage.kupiec_pof_test(
+        coverage.kupiec_pof(
             exceedances,
             confidence=confidence,
             alpha=alpha,
@@ -133,7 +133,7 @@ def run(
 
     results["coverage_christoffersen_conditional"] = (
         _serialize_result(
-            coverage.christoffersen_conditional_coverage_test(
+            coverage.christoffersen_conditional_coverage(
                 exceedances,
                 confidence=confidence,
                 alpha=alpha,
@@ -144,7 +144,7 @@ def run(
     if run_basel_if_applicable and confidence == 0.99:
         results["coverage_basel_traffic_light"] = (
             _serialize_result(
-                coverage.basel_traffic_light_test(
+                coverage.basel_traffic_light(
                     exceedances,
                     confidence=confidence,
                 )
@@ -165,13 +165,13 @@ def run(
 
     # Independence tests
     results["independence_christoffersen"] = _serialize_result(
-        independence.christoffersen_test(
+        independence.christoffersen_independence(
             exceedances
         )
     )
 
     results["independence_loss_quantile"] = _serialize_result(
-        independence.loss_quantile_independence_test(
+        independence.loss_quantile_independence(
             normalized_returns,
             case=pit_case,
             window_type=window_type,

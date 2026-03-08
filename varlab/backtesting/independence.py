@@ -31,7 +31,7 @@ class IndependenceTestResult:
     info: Dict[str, Any]
 
 
-def christoffersen_test(
+def christoffersen_independence(
     exceedances: Sequence,
     alpha: float = 0.05,
     eps: float = 1e-12,
@@ -177,7 +177,7 @@ def christoffersen_test(
     )
 
 
-def loss_quantile_independence_test(
+def loss_quantile_independence(
     values: Iterable,
     case: Literal["continuous", "discrete"] = "continuous",
     distribution: Dist = "normal",
@@ -344,3 +344,8 @@ def loss_quantile_independence_test(
             "acf": acf_obs,
         },
     )
+
+
+# Backward-compatible aliases
+christoffersen_test = christoffersen_independence
+loss_quantile_independence_test = loss_quantile_independence

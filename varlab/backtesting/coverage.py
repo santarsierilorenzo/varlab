@@ -8,7 +8,7 @@ This module implements statistically rigorous tests used in Value-at-Risk
 from __future__ import annotations
 
 from typing import Optional, Sequence, Dict, Any
-from .independence import christoffersen_test
+from .independence import christoffersen_independence
 from scipy.stats import binom, chi2
 from dataclasses import dataclass
 import numpy as np
@@ -71,7 +71,7 @@ def _validate_probability(
         raise ValueError(f"{name} must be in (0, 1).")
 
 
-def exact_binomial_coverage_test(
+def exact_binomial_coverage(
     exceedances: Sequence[int],
     confidence: float,
     alpha: float = 0.05,
@@ -162,7 +162,7 @@ def exact_binomial_coverage_test(
     )
 
 
-def kupiec_pof_test(
+def kupiec_pof(
     exceedances: Sequence[int],
     confidence: float,
     alpha: float = 0.05,
@@ -238,7 +238,7 @@ def kupiec_pof_test(
     )
 
 
-def basel_traffic_light_test(
+def basel_traffic_light(
     exceedances: Sequence[int],
     confidence: float,
 ) -> CoverageTestResult:
@@ -318,7 +318,7 @@ def basel_traffic_light_test(
     )
 
 
-def christoffersen_conditional_coverage_test(
+def christoffersen_conditional_coverage(
     exceedances: Sequence[int],
     confidence: float,
     alpha: float = 0.05,
@@ -343,7 +343,7 @@ def christoffersen_conditional_coverage_test(
     """
 
     # Unconditional coverage (Kupiec)
-    kupiec_res = kupiec_pof_test(
+    kupiec_res = kupiec_pof(
         exceedances,
         confidence,
         alpha=alpha,
@@ -352,7 +352,7 @@ def christoffersen_conditional_coverage_test(
     lr_uc = kupiec_res.statistic
 
     # Independence component
-    ind_res = christoffersen_test(
+    ind_res = christoffersen_independence(
         exceedances,
         alpha=alpha,  # not used for decision here
     )
@@ -381,3 +381,10 @@ def christoffersen_conditional_coverage_test(
             "df": 2,
         },
     )
+
+
+# Backward-compatible aliases
+exact_binomial_coverage_test = exact_binomial_coverage
+kupiec_pof_test = kupiec_pof
+basel_traffic_light_test = basel_traffic_light
+christoffersen_conditional_coverage_test = christoffersen_conditional_coverage

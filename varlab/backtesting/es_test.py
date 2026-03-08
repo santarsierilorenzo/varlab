@@ -91,7 +91,7 @@ def _decision(
     return p_value < significance_level
 
 
-def mcneil_frey_test(
+def mcneil_frey(
     returns: np.ndarray,
     var: Union[np.ndarray, float],
     es: Union[np.ndarray, float],
@@ -180,7 +180,7 @@ def mcneil_frey_test(
     )
 
 
-def acerbi_szekely_test(
+def acerbi_szekely(
     returns: np.ndarray,
     var: Union[np.ndarray, float],
     es: Union[np.ndarray, float],
@@ -269,3 +269,8 @@ def acerbi_szekely_test(
             "std_z": float(np.std(z_t, ddof=1)),
         },
     )
+
+
+# Backward-compatible aliases
+mcneil_frey_test = mcneil_frey
+acerbi_szekely_test = acerbi_szekely
