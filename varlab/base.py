@@ -195,3 +195,33 @@ def factor_rounding(
         return pd.Series(result, index=scaling_factor.index)
 
     return result
+
+
+def estimate_student_df(
+    returns: np.ndarray,
+    fit_mean: bool = False
+) -> float:
+    """
+    Estimate the degrees of freedom of a Student-t distribution using MLE.
+
+    Parameters
+    ----------
+    returns : np.ndarray
+        Array of asset returns.
+    fit_mean : bool
+        If False the location parameter is fixed to zero.
+
+    Returns
+    -------
+    float
+        Estimated degrees of freedom (df).
+    """
+
+    returns = np.asarray(returns)
+
+    if fit_mean:
+        df, _, _ = t.fit(returns)
+    else:
+        df, _, _ = t.fit(returns, floc=0)
+
+    return float(df)

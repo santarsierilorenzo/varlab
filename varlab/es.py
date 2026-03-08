@@ -5,6 +5,7 @@ from .base import (
     estimate_sigma,
     weighted_sorted_dist,
     time_scaling,
+    estimate_student_df,
 )
 
 Method = Literal["empirical", "parametric"]
@@ -61,7 +62,8 @@ def es(
     distribution : str, default="normal"
         Parametric distribution: "normal" or "t".
     df : Optional[int], default=None
-        Degrees of freedom for Student-t. Required if `distribution="t"`.
+        Degrees of freedom for Student-t. If None and
+        `distribution="t"`, estimated from sample via MLE.
     lamb : Optional[float], default=None
         Exponential decay parameter for weighted empirical ES. If provided,
         must be in (0, 1). If None, equal weights are used.
@@ -167,6 +169,8 @@ def _parametric_es(
         weights=weights,
     )
 
+    portfolio_losses: Optional[np.ndarray] = None
+
     if mean == "sample":
         if weights is None:
             mu = np.mean(losses)
@@ -186,10 +190,18 @@ def _parametric_es(
 
     elif distribution == "t":
         if df is None:
-            raise ValueError(
-                "df must be provided for Student-t distribution."
-            )
-        
+            if losses.ndim == 1:
+                sample_for_df = losses
+            elif weights is not None:
+                if portfolio_losses is None:
+                    weights_arr = np.asarray(weights, dtype=float)
+                    portfolio_losses = np.sum(losses * weights_arr, axis=1)
+                sample_for_df = portfolio_losses
+            else:
+                sample_for_df = losses.ravel()
+
+            df = estimate_student_df(sample_for_df)
+
         if df <= 2:
             raise ValueError("df must be > 2 for finite variance.")
 
