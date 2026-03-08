@@ -3,13 +3,16 @@ from __future__ import annotations
 """
 High-level runner for VaR backtesting diagnostics.
 """
-from . import coverage, distribution, independence
-from typing import Any, Dict, Optional, Sequence
+from . import coverage, distribution as distribution_tests, independence
+from typing import Any, Dict, Optional, Sequence, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import pandas as pd
 import numpy as np
+
+# Backward-compatible module alias used by tests/integration code.
+distribution = distribution_tests
 
 
 class WindowType(str, Enum):
@@ -224,6 +227,17 @@ def run(
     alpha: float = 0.05,
     n_sim: int = 5000,
     window: int = 120,
+    min_periods: Optional[int] = None,
+    distribution: Literal["normal", "t"] = "normal",
+    df: Optional[int] = None,
+    mean: Literal["zero", "sample"] = "zero",
+    ddof: int = 1,
+    max_dim: int = 4,
+    pit_eps: float = 1e-12,
+    loss_max_lag: int = 5,
+    loss_eps: float = 1e-12,
+    loss_seed: Optional[int] = 0,
+    christoffersen_eps: float = 1e-12,
     run_basel_if_applicable: bool = True,
     test_types: Sequence[TestCategory] | None = None,
 ) -> DiagnosticRunResult:
@@ -289,14 +303,24 @@ def run(
             for k, v in cov.items()
         }
 
+    # Keep rolling/expanding behavior consistent unless caller overrides.
+    min_periods = window if min_periods is None else min_periods
+
     if TestCategory.DISTRIBUTION in test_types:
 
-        pit = distribution.pit_diagnostics(
+        pit = distribution_tests.pit_diagnostics(
             returns,
             case=pit_case.value,
+            distribution=distribution,
+            df=df,
             window_type=window_type.value,
             window=window,
+            min_periods=min_periods,
+            ddof=ddof,
+            max_dim=max_dim,
             alpha=alpha,
+            eps=pit_eps,
+            mean=mean,
         )
 
         results[TestCategory.DISTRIBUTION] = {
@@ -311,15 +335,25 @@ def run(
             "christoffersen": independence.christoffersen_independence(
                 exceedances,
                 alpha=alpha,
+                eps=christoffersen_eps,
             ),
 
             "loss_quantile":
                 independence.loss_quantile_independence(
                     returns,
                     case=pit_case.value,
+                    distribution=distribution,
+                    df=df,
                     window_type=window_type.value,
                     window=window,
+                    min_periods=min_periods,
+                    max_lag=loss_max_lag,
+                    eps=loss_eps,
                     n_sim=n_sim,
+                    seed=loss_seed,
+                    ddof=ddof,
+                    mean=mean,
+                    alpha=alpha,
                 ),
         }
 

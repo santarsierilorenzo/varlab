@@ -117,6 +117,189 @@ def test_diagnostic_run_passes_alpha_to_christoffersen_independence(monkeypatch)
     assert captured["alpha"] == 0.01
 
 
+def test_diagnostic_run_propagates_statistical_parameters(monkeypatch):
+    captured = {
+        "distribution": None,
+        "independence": None,
+        "christoffersen_eps": None,
+    }
+
+    def fake_pit_diagnostics(
+        values,
+        case="continuous",
+        distribution="normal",
+        df=None,
+        window_type="rolling",
+        window=60,
+        min_periods=60,
+        ddof=1,
+        max_dim=4,
+        alpha=0.05,
+        eps=1e-12,
+        mean="zero",
+    ):
+        captured["distribution"] = {
+            "case": case,
+            "distribution": distribution,
+            "df": df,
+            "window_type": window_type,
+            "window": window,
+            "min_periods": min_periods,
+            "ddof": ddof,
+            "max_dim": max_dim,
+            "alpha": alpha,
+            "eps": eps,
+            "mean": mean,
+        }
+        return {
+            "uniformity": diagnostic.distribution.DistributionTestResult(
+                test_name="u",
+                statistic=0.0,
+                p_value=1.0,
+                reject=False,
+                info={"outcome": "PASS"},
+            ),
+            "independence": diagnostic.distribution.DistributionTestResult(
+                test_name="i",
+                statistic=0.0,
+                p_value=1.0,
+                reject=False,
+                info={"outcome": "PASS"},
+            ),
+            "berkowitz": diagnostic.distribution.DistributionTestResult(
+                test_name="b",
+                statistic=0.0,
+                p_value=1.0,
+                reject=False,
+                info={"outcome": "PASS"},
+            ),
+        }
+
+    def fake_christoffersen(exceedances, alpha=0.05, eps=1e-12):
+        captured["christoffersen_eps"] = eps
+        return diagnostic.independence.IndependenceTestResult(
+            test_name="c",
+            statistic=0.0,
+            p_value=1.0,
+            reject=False,
+            info={"outcome": "PASS"},
+        )
+
+    def fake_loss_quantile_independence(
+        values,
+        case="continuous",
+        distribution="normal",
+        df=None,
+        window_type="rolling",
+        window=60,
+        min_periods=60,
+        max_lag=5,
+        alpha=0.05,
+        eps=1e-12,
+        n_sim=5000,
+        seed=0,
+        ddof=1,
+        mean="zero",
+    ):
+        captured["independence"] = {
+            "case": case,
+            "distribution": distribution,
+            "df": df,
+            "window_type": window_type,
+            "window": window,
+            "min_periods": min_periods,
+            "max_lag": max_lag,
+            "alpha": alpha,
+            "eps": eps,
+            "n_sim": n_sim,
+            "seed": seed,
+            "ddof": ddof,
+            "mean": mean,
+        }
+        return diagnostic.independence.IndependenceTestResult(
+            test_name="lq",
+            statistic=0.0,
+            p_value=1.0,
+            reject=False,
+            info={"outcome": "PASS"},
+        )
+
+    monkeypatch.setattr(
+        diagnostic.distribution,
+        "pit_diagnostics",
+        fake_pit_diagnostics,
+    )
+    monkeypatch.setattr(
+        diagnostic.independence,
+        "christoffersen_independence",
+        fake_christoffersen,
+    )
+    monkeypatch.setattr(
+        diagnostic.independence,
+        "loss_quantile_independence",
+        fake_loss_quantile_independence,
+    )
+
+    returns = pd.Series(np.random.default_rng(3).normal(0.0, 0.01, size=220))
+    exceedances = returns < -0.03
+
+    diagnostic.run(
+        returns=returns,
+        exceedances=exceedances,
+        confidence=0.99,
+        window_type="expanding",
+        pit_case="continuous",
+        alpha=0.01,
+        n_sim=1234,
+        window=80,
+        min_periods=75,
+        distribution="t",
+        df=9,
+        mean="sample",
+        ddof=0,
+        max_dim=3,
+        pit_eps=1e-9,
+        loss_max_lag=7,
+        loss_eps=1e-8,
+        loss_seed=42,
+        christoffersen_eps=1e-7,
+        test_types=(
+            diagnostic.TestCategory.DISTRIBUTION,
+            diagnostic.TestCategory.INDEPENDENCE,
+        ),
+    )
+
+    assert captured["distribution"] == {
+        "case": "continuous",
+        "distribution": "t",
+        "df": 9,
+        "window_type": "expanding",
+        "window": 80,
+        "min_periods": 75,
+        "ddof": 0,
+        "max_dim": 3,
+        "alpha": 0.01,
+        "eps": 1e-9,
+        "mean": "sample",
+    }
+    assert captured["independence"] == {
+        "case": "continuous",
+        "distribution": "t",
+        "df": 9,
+        "window_type": "expanding",
+        "window": 80,
+        "min_periods": 75,
+        "max_lag": 7,
+        "alpha": 0.01,
+        "eps": 1e-8,
+        "n_sim": 1234,
+        "seed": 42,
+        "ddof": 0,
+        "mean": "sample",
+    }
+    assert captured["christoffersen_eps"] == 1e-7
+
+
 def test_estimate_sigma_multivariate_respects_ddof():
     returns = np.array(
         [

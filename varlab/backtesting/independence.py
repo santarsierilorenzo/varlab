@@ -251,7 +251,7 @@ def loss_quantile_independence(
         Significance level for rejection decision.
     eps : float, default=1e-12
         Numerical clipping level for PIT values.
-    n_sim : int, default=20000
+    n_sim : int, default=5000
         Number of Monte Carlo simulations for null distribution.
     seed : Optional[int], default=0
         Random seed for reproducibility.
