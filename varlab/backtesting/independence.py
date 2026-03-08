@@ -155,13 +155,17 @@ def christoffersen_test(
 
     # Under H0: LR ~ chi-square(1), =^.^=
     pval = chi2.sf(lr, df=1)
+    reject = bool(pval < alpha)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return IndependenceTestResult(
         test_name="Christoffersen Exceedance Independence Test",
         statistic=float(lr),
         p_value=float(pval),
-        reject=bool(pval < alpha),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(len(x)),
             "alpha": alpha,
             "m_hat_0": float(m_hat_0),

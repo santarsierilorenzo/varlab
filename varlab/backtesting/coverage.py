@@ -354,7 +354,7 @@ def christoffersen_conditional_coverage_test(
     # Independence component
     ind_res = christoffersen_test(
         exceedances,
-        alpha=0.05,  # not used for decision here
+        alpha=alpha,  # not used for decision here
     )
 
     lr_ind = ind_res.statistic
@@ -363,10 +363,9 @@ def christoffersen_conditional_coverage_test(
     lr_cc = lr_uc + lr_ind
 
     p_value = chi2.sf(lr_cc, df=2)
+    reject = bool(p_value < alpha)
 
-    reject: Optional[bool] = None
-    if alpha is not None:
-        reject = p_value < alpha
+    outcome = "FAIL" if reject else "PASS"
 
     return CoverageTestResult(
         test_name="Christoffersen Conditional Coverage",
@@ -374,6 +373,7 @@ def christoffersen_conditional_coverage_test(
         p_value=float(p_value),
         reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": kupiec_res.info["sample_size"],
             "confidence": confidence,
             "lr_uc": float(lr_uc),
