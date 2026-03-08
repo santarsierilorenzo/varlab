@@ -1,3 +1,30 @@
+"""
+Probability Integral Transform (PIT) utilities.
+
+This module provides functions to compute PIT values for financial return
+series using either parametric continuous distributions or empirical discrete
+distributions.
+
+The implementation supports both rolling and expanding estimation windows and
+can handle single assets or portfolios with time-varying weights.
+
+Continuous PIT assumes that returns follow
+
+    X_t = μ_t + sigma_t Z_t
+
+where the standardized residuals Z_t follow either a Normal or Student-t
+distribution. The conditional volatility sigma_t is estimated using rolling or
+expanding windows through the RollingRisk and ExpandingRisk utilities.
+
+Discrete PIT is implemented via the randomized PIT to correctly handle
+empirical distributions with point masses.
+
+The main entry point is `pit`, with `rolling_pit` and `expanding_pit` provided
+as convenience wrappers.
+"""
+
+from __future__ import annotations
+
 from typing import Iterable, Optional, Tuple, Literal, Callable
 from ..window import ExpandingRisk, RollingRisk
 from ..base import estimate_sigma
