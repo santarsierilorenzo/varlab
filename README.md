@@ -10,12 +10,9 @@
 
 <p align="center">
   <i>
-    A minimal Python package for Value at Risk, Expected
-    Shortfall, and risk-based position scaling.
+    Python package for Value at Risk and Expected Shortfall.
   </i>
 </p>
-
-`varlab` is a focused toolkit for market risk practitioners who want clean, transparent VaR/ES estimation and practical backtesting diagnostics without heavyweight framework overhead.
 
 
 ## 📦 Installation
