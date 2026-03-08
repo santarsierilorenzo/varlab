@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.11
 
 # Create non-root user with bash
 RUN useradd -ms /bin/bash myuser
@@ -7,7 +7,7 @@ RUN useradd -ms /bin/bash myuser
 WORKDIR /tmp
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt || true
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
