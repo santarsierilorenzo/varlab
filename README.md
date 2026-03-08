@@ -17,7 +17,6 @@
 
 `varlab` is a focused toolkit for market risk practitioners who want clean, transparent VaR/ES estimation and practical backtesting diagnostics without heavyweight framework overhead.
 
-It is designed for fast iteration in research and production-like notebooks, with a simple API that works for both single-series and multi-asset workflows.
 
 ## 📦 Installation
 Install from PyPI:
