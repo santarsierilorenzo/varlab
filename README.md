@@ -93,7 +93,7 @@ es_ew = es(returns, method="empirical", confidence=0.99, lamb=0.97)
 ```
 
 ## Backtesting Suite
-Run a full backtesting diagnostic on exceedances:
+Run a full backtesting diagnostic:
 
 ```python
 from varlab import backtesting
