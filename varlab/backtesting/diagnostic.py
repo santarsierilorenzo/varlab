@@ -192,6 +192,8 @@ class DiagnosticRunResult:
                     f"{label:<{col_test}}{result:>8}"
                 )
 
+            lines.append("")  # Blank line between categories
+
         return "\n".join(lines)
 
     def __str__(self) -> str:
