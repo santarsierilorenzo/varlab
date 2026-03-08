@@ -78,24 +78,11 @@ def _ttest_mean_zero(
     return float(t_stat), float(p_value)
 
 
-def _decision(
-    p_value: float,
-    significance_level: Optional[float],
-) -> Optional[bool]:
-    """
-    Return rejection decision if significance level is provided.
-    """
-    if significance_level is None:
-        return None
-
-    return p_value < significance_level
-
-
 def mcneil_frey(
     returns: np.ndarray,
     var: Union[np.ndarray, float],
     es: Union[np.ndarray, float],
-    alpha: Optional[float] = None,
+    epsilon: float = 0.05,
     alternative: str = "greater",
 ) -> EsTestResult:
     """
@@ -137,11 +124,11 @@ def mcneil_frey(
         Forecasted VaR in loss space (positive values).
     es : np.ndarray | float
         Forecasted ES or constant ES target (positive values).
-    alpha : Optional[float]
+    epsilon : float
         Significance level for rejection decision.
     alternative : {"greater", "less", "two-sided"}
-        "greater"  -> ES underestimation
-        "less"     -> ES overestimation
+        "greater" -> ES underestimation
+        "less" -> ES overestimation
         "two-sided"-> any systematic bias
     """
     _validate_alternative(alternative)
@@ -165,13 +152,17 @@ def mcneil_frey(
         excess_losses,
         alternative,
     )
+    reject = bool(p_value < epsilon)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return EsTestResult(
         test_name="McNeil-Frey (2000)",
         statistic=t_stat,
         p_value=p_value,
-        reject=_decision(p_value, alpha),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(losses.size),
             "observed_violations": int(excess_losses.size),
             "alternative": alternative,
@@ -185,7 +176,7 @@ def acerbi_szekely(
     var: Union[np.ndarray, float],
     es: Union[np.ndarray, float],
     alpha: float,
-    significance_level: Optional[float] = None,
+    epsilon: float = 0.05,
     alternative: str = "greater",
 ) -> EsTestResult:
     """
@@ -227,11 +218,11 @@ def acerbi_szekely(
         Forecasted ES or constant ES target.
     alpha : float
         Tail probability (e.g. 0.025).
-    significance_level : Optional[float]
+    epsilon : float
         Significance level for rejection decision.
     alternative : {"greater", "less", "two-sided"}
-        "greater"  -> ES underestimation
-        "less"     -> ES overestimation
+        "greater" -> ES underestimation
+        "less" -> ES overestimation
         "two-sided"-> any systematic bias
     """
     if not (0.0 < alpha < 1.0):
@@ -255,13 +246,17 @@ def acerbi_szekely(
         z_t,
         alternative,
     )
+    reject = bool(p_value < epsilon)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return EsTestResult(
         test_name="Acerbi-Szekely (2014)",
         statistic=t_stat,
         p_value=p_value,
-        reject=_decision(p_value, significance_level),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(losses.size),
             "alpha": float(alpha),
             "alternative": alternative,
