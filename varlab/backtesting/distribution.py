@@ -199,13 +199,17 @@ def _berkowitz_test(
 
     # Survival function is numerically more stable than 1 - CDF
     pval = chi2.sf(lr_stat, df=3)
+    reject = bool(pval < alpha)
+
+    outcome = "FAIL" if reject else "PASS"
 
     return DistributionTestResult(
         test_name="Berkowitz LR Test",
         statistic=float(lr_stat),
         p_value=float(pval),
-        reject=bool(pval < alpha),
+        reject=reject,
         info={
+            "outcome": outcome,
             "sample_size": int(len(z[1:])),
             "alpha": alpha,
             "c_hat": float(c_hat),
