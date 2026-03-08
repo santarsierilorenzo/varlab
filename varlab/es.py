@@ -19,8 +19,8 @@ def es(
     confidence: float = 0.99,
     method: Method = "empirical",
     weights: Optional[ArrayLike] = None,
-    distribution: str = "normal",
-    df: Optional[int] = None,
+    distribution: Dist = "normal",
+    df: Optional[float] = None,
     lamb: Optional[float] = None,
     mean: Literal["zero", "sample"] = "zero",
 ) -> float:
@@ -59,9 +59,9 @@ def es(
         Estimation method. Empirical method supports only 1D inputs.
     weights : Optional[ArrayLike], default=None
         Portfolio weights. Used for 2D inputs in the parametric method.
-    distribution : str, default="normal"
+    distribution : {"normal", "t"}, default="normal"
         Parametric distribution: "normal" or "t".
-    df : Optional[int], default=None
+    df : Optional[float], default=None
         Degrees of freedom for Student-t. If None and
         `distribution="t"`, estimated from sample via MLE.
     lamb : Optional[float], default=None
@@ -147,8 +147,8 @@ def _parametric_es(
     gamma: float,
     n_days: int,
     weights: Optional[ArrayLike],
-    distribution: str,
-    df: Optional[int],
+    distribution: Dist,
+    df: Optional[float],
     mean: Literal["zero", "sample"] = "zero",
 ) -> float:
     """
@@ -200,7 +200,10 @@ def _parametric_es(
             else:
                 sample_for_df = losses.ravel()
 
-            df = estimate_student_df(sample_for_df)
+            df = estimate_student_df(
+                sample_for_df,
+                fit_mean=(mean == "sample"),
+            )
 
         if df <= 2:
             raise ValueError("df must be > 2 for finite variance.")

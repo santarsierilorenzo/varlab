@@ -1,5 +1,5 @@
 """
-Indepedence tests for VaR backtesting.
+Independence tests for VaR backtesting.
 
 This module implements statistically rigorous tests used in
 Value-at-Risk (VaR) model validation.
@@ -153,7 +153,7 @@ def christoffersen_independence(
     # may arise due to floating-point precision.
     lr = max(0.0, 2 * (l1 - l0))
 
-    # Under H0: LR ~ chi-square(1), =^.^=
+    # Under H0: LR ~ chi-square(1)
     pval = chi2.sf(lr, df=1)
     reject = bool(pval < alpha)
 

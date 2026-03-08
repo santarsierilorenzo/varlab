@@ -27,7 +27,7 @@ def estimate_sigma(
             raise ValueError("Weights required for portfolio volatility.")
 
         weights_arr = np.asarray(weights, dtype=float)
-        sigma = _portfolio_volatility(values, weights_arr)
+        sigma = _portfolio_volatility(values, weights_arr, ddof=ddof)
 
     else:
         raise ValueError("Values must be 1D or 2D.")
@@ -115,6 +115,7 @@ def weighted_sorted_dist(
 def _portfolio_volatility(
     returns: np.ndarray,
     weights: np.ndarray,
+    ddof: int = 1,
 ) -> float:
     """
     Compute portfolio volatility using covariance matrix.
@@ -122,7 +123,7 @@ def _portfolio_volatility(
     if returns.shape[1] != weights.shape[0]:
         raise ValueError("Weights dimension mismatch.")
 
-    cov = np.cov(returns, rowvar=False)
+    cov = np.cov(returns, rowvar=False, ddof=ddof)
     variance = weights.T @ cov @ weights
 
     return float(np.sqrt(variance))

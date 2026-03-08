@@ -4,8 +4,8 @@ from __future__ import annotations
 High-level runner for VaR backtesting diagnostics.
 """
 from . import coverage, distribution, independence
+from typing import Any, Dict, Optional, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, Sequence
 from datetime import datetime
 from enum import Enum
 import pandas as pd
@@ -72,7 +72,7 @@ class BacktestResult:
     test_name: str
     statistic: Any
     p_value: Any
-    reject: bool
+    reject: Optional[bool]
     info: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -82,7 +82,7 @@ class BacktestResult:
             "test_name": self.test_name,
             "statistic": _to_builtin(self.statistic),
             "p_value": _to_builtin(self.p_value),
-            "reject": bool(self.reject),
+            "reject": self.reject,
             "info": {
                 k: _to_builtin(v)
                 for k, v in self.info.items()
@@ -210,7 +210,7 @@ def _result_from_object(obj: Any) -> BacktestResult:
         test_name=obj.test_name,
         statistic=obj.statistic,
         p_value=obj.p_value,
-        reject=bool(obj.reject),
+        reject=obj.reject,
         info=getattr(obj, "info", {}),
     )
 
@@ -309,7 +309,8 @@ def run(
         ind = {
 
             "christoffersen": independence.christoffersen_independence(
-                exceedances
+                exceedances,
+                alpha=alpha,
             ),
 
             "loss_quantile":

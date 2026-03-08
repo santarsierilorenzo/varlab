@@ -18,8 +18,8 @@ def var(
     confidence: float = 0.99,
     method: Method = "empirical",
     weights: Optional[ArrayLike] = None,
-    distribution: str = "normal",
-    df: Optional[int] = None,
+    distribution: Dist = "normal",
+    df: Optional[float] = None,
     lamb: Optional[float] = None,
     mean: Literal["zero", "sample"] = "zero",
 ) -> float:
@@ -59,9 +59,9 @@ def var(
         Estimation method. Empirical method supports only 1D inputs.
     weights : Optional[ArrayLike], default=None
         Portfolio weights. Used for 2D inputs in the parametric method.
-    distribution : str, default="normal"
+    distribution : {"normal", "t"}, default="normal"
         Parametric distribution: "normal" or "t".
-    df : Optional[int], default=None
+    df : Optional[float], default=None
         Degrees of freedom for Student-t. If None and
         `distribution="t"`, estimated from sample via MLE.
     lamb : Optional[float], default=None
@@ -123,7 +123,7 @@ def _empirical_var(
         # NOTE: The formal definition of VaR requires finding the infimum of
         # the set of losses where the cumulative distribution exceeds gamma.
         # In practical terms: always choose the greater value when estimating
-        # the quantile =^.^=
+        # the quantile.
         var_value = np.quantile(losses, gamma, method="higher")
         
     else:
@@ -139,8 +139,8 @@ def _parametric_var(
     losses: np.ndarray,
     gamma: float,
     n_days: int,
-    distribution: str,
-    df: Optional[int],
+    distribution: Dist,
+    df: Optional[float],
     weights: Optional[Iterable[float]] = None,
     mean: Literal["zero", "sample"] = "zero",
 ) -> float:
@@ -194,7 +194,10 @@ def _parametric_var(
             else:
                 sample_for_df = losses.ravel()
 
-            df = estimate_student_df(sample_for_df)
+            df = estimate_student_df(
+                sample_for_df,
+                fit_mean=(mean == "sample"),
+            )
 
         if df <= 2:
             raise ValueError("df must be > 2 for finite variance.")
