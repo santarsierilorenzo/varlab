@@ -129,7 +129,7 @@ back_res_es = backtesting.diagnostic.run(
     var_forecast=var_forecast,
     es_forecast=es_forecast,
     # Optional ES-specific controls:
-    # es_tail_alpha=0.01,            # defaults to 1 - confidence
+    # es_tail_alpha=0.01,  # defaults to 1 - confidence
     # es_test_epsilon=0.05,
     # es_test_alternative="greater",
 )
