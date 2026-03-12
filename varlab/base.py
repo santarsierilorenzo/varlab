@@ -225,4 +225,5 @@ def estimate_student_df(
     else:
         df, _, _ = t.fit(returns, floc=0)
 
+    df = np.clip(df, 2.01, 200)
     return float(df)
